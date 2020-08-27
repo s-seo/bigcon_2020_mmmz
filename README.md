@@ -35,10 +35,13 @@ hours_inweek | 주 단위 시간 | object(168)
 **hottest** | 탑10 포함여부 | object(2)
 **pay** | 지불방식 | object(2)
 **luxury** | 명품 단가 50만 이상 | object(2)
-**onair** | 평균 시청률 | float
-**original_c** | naver | object
-**small_c** | naver | object
-**middle_c** | naver(null) | object
-**big_c** | naver(null) | object
-**brand** | 브랜드(null) | object
+**brandpower** | 업데이트 예정 | -
+**season_item** | 업데이트 예정 | -
+**naver_crawl** | 업데이트 예정 | -
+**weather** | 업데이트 예정 | -
+original_c | naver | object
+small_c | naver | object
+middle_c | naver(null) | object
+big_c | naver(null) | object
+brand | 브랜드(null) | object
 
