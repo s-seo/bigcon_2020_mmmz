@@ -1,15 +1,14 @@
-## import libraries
+# import libraries
 # stat
 import pandas as pd
 import numpy as np
 import math
 import random
-import statistics as st
 
 # data
 import datetime
 
-class features_p1:
+class Features:
     def __init__(self):
         ## load data
         self.train = pd.read_csv("../data/00/2019sales.csv", skiprows = 1)
@@ -378,5 +377,6 @@ class features_p1:
 
 
 
-t = features_p1()
+t = Features()
 train = t.run_all()
+train.to_excel("../data/01/2019sales_v2.xlsx")
