@@ -83,9 +83,9 @@ class features_p1:
         for i in range(0, len(self.train)):
             dt = str(self.train['ymd'].iloc[i])
             dy = self.train['weekdays'].iloc[i]
-        if dt in holiday_dates or dy == 'Saturday' or dy == 'Sunday':
-            holidays.append(1)
-        else: holidays.append(0)
+            if dt in holiday_dates or dy == 'Saturday' or dy == 'Sunday':
+                holidays.append(1)
+            else: holidays.append(0)
         self.train['holidays'] = holidays
 
     def get_red_days(self):
