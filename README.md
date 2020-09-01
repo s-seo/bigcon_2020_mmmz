@@ -15,7 +15,7 @@ index | index | index
 취급액 | raw | float
 selling_price | raw(eng) | float
 sales | raw(eng) | float
-exposed.t | raw(eng) | float
+exposed | raw(eng) | float
 volume | sales/selling_price | float
 month | 월 | object(12)
 day | 일 | object(31)
