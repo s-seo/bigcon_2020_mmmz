@@ -99,9 +99,9 @@ class features_p1:
                           '2019-12-25']
         for i in range(0, len(self.train)):
             dt = str(self.train['ymd'].iloc[i])
-        if dt in holiday_dates:
-            red.append(1)
-        else: red.append(0)
+            if dt in holiday_dates:
+                red.append(1)
+            else: red.append(0)
         self.train['red'] = red
 
     def get_weekends(self):
@@ -239,8 +239,8 @@ class features_p1:
         self.train.loc[(self.train['red']==0) & (self.train['holidays']==1) & (self.train['hours'].isin(prime_weekend)),'primetime'] =1
         self.train.loc[(self.train['red']==0) & (self.train['holidays']==1) & (self.train['hours'].isin(prime_weekend2)),'primetime'] = 2
 
-        self.train.loc[(self.train['holiday']==0) & (self.train['hours'].isin(prime_week)),'primetime'] = 1
-        self.train.loc[(self.train['holiday']==0) & (self.train['hours'].isin(prime_week2)),'primetime'] = 2
+        self.train.loc[(self.train['holidays']==0) & (self.train['hours'].isin(prime_week)),'primetime'] = 1
+        self.train.loc[(self.train['holidays']==0) & (self.train['hours'].isin(prime_week2)),'primetime'] = 2
 
 
     ############################
@@ -371,7 +371,7 @@ class features_p1:
         self.check_men_items()
         self.check_luxury_items()
         self.check_pay()
-        self.add_vratings()
+        #self.add_vratings()
         self.train = self.add_categories()
         self.train = self.drop_na()
         return self.train
