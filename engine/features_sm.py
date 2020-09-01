@@ -21,7 +21,6 @@ class features_p1:
         self.train.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
         self.train['ymd'] = [d.date() for d in self.train["방송일시"]]
         self.train['volume'] = self.train['취급액'] / self.train['판매단가']
-        self.train['weekday'] = self.train.방송일시.dt.weekday_name
         # define ts_schedule, one row for each timeslot
         self.ts_schedule = self.train.copy().groupby('방송일시').first()
         self.ts_schedule.reset_index(inplace=True)
@@ -67,6 +66,12 @@ class features_p1:
                     self.ts_schedule.ymd.iloc[time_idx] = self.ts_schedule.ymd.iloc[time_idx - 1]
 
             t = t + 1
+
+    def get_weekday(self):
+        """
+        :objective: get weekday
+        """
+        self.train['weekday'] = self.train.방송일시.dt.weekday_name
 
     def timeslot(self):
         """
@@ -187,6 +192,7 @@ class features_p1:
         self.filter_jappingt()
         self.fill_exposed_na()
         self.get_ymd()
+        self.get_weekday()
         self.timeslot()
         self.get_show_id()
         self.get_min_range()
