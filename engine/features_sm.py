@@ -201,5 +201,5 @@ class features_p1:
 
 
 t = features_p1()
-t.run_all()
+train = t.run_all()
 
