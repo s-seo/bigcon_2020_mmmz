@@ -8,22 +8,23 @@ import datetime
 
 class features_p1:
     def __init__(self):
-        ## load data
-        self.train = pd.read_csv("../data/00/2019sales.csv", skiprows = 1)
-        self.train.rename(columns={' 취급액 ': '취급액'}, inplace = True)
-        self.train['exposed']  = self.train['노출(분)']
+        # load data
+        self.train = pd.read_csv("../data/00/2019sales.csv", skiprows=1)
+        self.train.rename(columns={' 취급액 ': '취급액'}, inplace=True)
+        self.train['exposed'] = self.train['노출(분)']
         # define data types
         self.train.마더코드 = self.train.마더코드.astype(int).astype(str).str.zfill(6)
         self.train.상품코드 = self.train.상품코드.astype(int).astype(str).str.zfill(6)
         self.train.취급액 = self.train.취급액.str.replace(",","").astype(float)
         self.train.판매단가 = self.train.판매단가.str.replace(",","").replace(' - ', np.nan).astype(float)
         self.train.방송일시 = pd.to_datetime(self.train.방송일시, format="%Y/%m/%d %H:%M")
-        self.train.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)
+        self.train.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
         self.train['ymd'] = [d.date() for d in self.train["방송일시"]]
         self.train['volume'] = self.train['취급액'] / self.train['판매단가']
+        self.train['weekday'] = self.train.방송일시.dt.weekday_name
         # define ts_schedule, one row for each timeslot
         self.ts_schedule = self.train.copy().groupby('방송일시').first()
-        self.ts_schedule.reset_index(inplace = True)
+        self.ts_schedule.reset_index(inplace=True)
 
     def filter_jappingt(self):
         """
@@ -48,7 +49,7 @@ class features_p1:
         :objective: fill out NA values on 'exposed' with mean(exposed)
         :return:pd.Dataframe with adjusted 'exposed' column
         """
-        self.train["exposed"].fillna(self.train.groupby('방송일시')['exposed'].transform('mean'), inplace = True)
+        self.train["exposed"].fillna(self.train.groupby('방송일시')['exposed'].transform('mean'), inplace=True)
 
     def get_ymd(self):
         """
