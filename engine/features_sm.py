@@ -175,5 +175,5 @@ get_sales_power()
 check_men_items()
 get_hour()
 freq_items()
-drop_na()
+train = drop_na()
 
