@@ -311,7 +311,7 @@ class Features:
         categories.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
         categories.rename(columns={' 취급액 ': '취급액'}, inplace=True)
         output = pd.merge(left=self.train,
-                          right=categories[['방송일시', '상품코드', 'brand', 'original_c', 'small_c', 'middle_c', 'big_c']],
+                          right=categories[['방송일시', '상품코드', 'brand', 'original_c', 'small_c', 'small_c_code','middle_c','middle_c_code','big_c']],
                           how='left', on=['방송일시', '상품코드'], sort=False)
         return output
 
