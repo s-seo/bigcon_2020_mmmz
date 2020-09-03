@@ -270,6 +270,23 @@ class Features:
         self.train['freq'] = 0
         self.train.freq.loc[self.train.상품코드.isin(freq_list)] = 1
 
+    def check_steady_sellers(self):
+        """
+        :objective: check if it is included in top 40(by total sales)
+        """
+        steady_list = self.train.groupby('상품코드') \
+                          .apply(lambda x: sum(x.취급액) / x.show_id.nunique()).sort_values(ascending=False).index[1:40]
+        self.train['steady'] = 0
+        self.train.steady.loc[self.train.상품코드.isin(steady_list)] = 1
+
+    def check_brand_power(self):
+        """
+        :objective: identify items with low sales power(+) & high price
+        """
+        bpower_list = self.train.마더코드.loc[(self.train.sales_power > self.train.sales_power.quantile(0.7)) &
+                                     (self.train.판매단가 > self.train.판매단가.quantile(0.7))].unique()
+        self.train['bpower'] = 0
+        self.train.bpower.loc[self.train.마더코드.isin(bpower_list)] = 1
 
     ############################
     ## Other characteristics
@@ -376,6 +393,8 @@ class Features:
         self.get_primetime()
         self.get_sales_power()
         self.freq_items()
+        self.check_brand_power()
+        self.check_steady_sellers()
         self.check_men_items()
         self.check_luxury_items()
         self.check_pay()
