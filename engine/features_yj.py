@@ -7,6 +7,7 @@ import random
 
 # data
 import datetime
+import itertools
 
 class Features:
     def __init__(self):
@@ -163,16 +164,22 @@ class Features:
     def timeslot(self):
         """
         :objective: get timeslot of each show
-        :return: pandas dataframe
         """
-        self.ts_schedule['parttime'] = self.ts_schedule.groupby(['ymd','상품코드']).cumcount()+1
-        # 2019-10-27 06:00:00  manually update
-        self.ts_schedule.parttime.iloc[19314:19317,] = (1,2,3)
-        self.train['parttime'] = ""
-        for i in range(0,len(self.ts_schedule)):
-            timeslot = self.ts_schedule.방송일시.iloc[i]
-            part = self.ts_schedule.parttime.iloc[i]
-            self.train.loc[self.train.방송일시 == timeslot, 'parttime'] = part
+        show_counts = [len(list(y)) for x, y in itertools.groupby(self.ts_schedule.상품코드)]  # count repeated 상품코드
+        self.ts_schedule['parttime'] = ""  # define empty column
+        j = 0
+        for i in range(0, len(show_counts)):
+            first_idx = j
+            self.ts_schedule.parttime[first_idx] = 1
+            j += show_counts[i]
+            if show_counts[i] == 1:
+                next
+            self.ts_schedule.parttime[(first_idx + 1):j] = np.arange(2, show_counts[i] + 1)
+
+        self.train['parttime'] = ""  # define empty column
+        # add timeslot variable to train dataset
+        for i in range(0, len(self.ts_schedule)):
+            self.train.parttime[self.train.방송일시 == self.ts_schedule.방송일시[i]] = self.ts_schedule.parttime[i]
 
     def get_show_id(self):
         """
@@ -271,8 +278,10 @@ class Features:
         """
         :objective: create a dummy variable to identify products for men
         """
-        self.train['men'] = 0
-        self.train.men[self.train['상품명'].str.contains("남성")] = 1
+        mens_category = ["의류", "이미용", "잡화", "속옷"]  # only for these categories
+        self.train['men'] = ""
+        self.train.men[self.train['상품군'].isin(mens_category)] = 0
+        self.train.men[self.train['상품군'].isin(mens_category) & self.train['상품명'].str.contains("남성")] = 1
 
     def check_luxury_items(self):
         """
