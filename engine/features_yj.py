@@ -1,4 +1,4 @@
-# import libraries
+
 # stat
 import pandas as pd
 import numpy as np
@@ -380,10 +380,9 @@ class Features:
         categories.방송일시 = pd.to_datetime(categories.방송일시, format="%Y/%m/%d %H:%M")
         categories.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
         categories.rename(columns={' 취급액 ': '취급액'}, inplace=True)
-        output = pd.merge(left=self.train,
+        self.train = pd.merge(left=self.train,
                           right=categories[['방송일시', '상품코드', 'brand', 'original_c', 'small_c', 'small_c_code','middle_c','middle_c_code','big_c']],
-                          how='left', on=['방송일시', '상품코드'], sort=False)
-        return output
+                          how='inner', on=['방송일시', '상품코드'], sort=False)
 
     def add_vratings(self):
         """
@@ -430,13 +429,10 @@ class Features:
         """
         :objective: drop na rows and 취급액 == 50000
         """
-        rtn = self.train[self.train['취급액'].notna()]
-        rtn = rtn[rtn['취급액']!= 50000]
-        return rtn
+        self.train = self.train[self.train['취급액'].notna()]
+        self.train = self.train[self.train['취급액']!= 50000]
 
     def run_all(self):
-        self.train = self.drop_na()
-        self.train = self.add_categories()
 
         self.get_time()
         self.get_weekday()
@@ -454,6 +450,9 @@ class Features:
         self.get_show_id()
         self.get_min_range()
         self.add_showid_minran_to_train()
+
+        self.drop_na()
+        self.add_categories()
 
         self.get_primetime()
         self.check_originalc_primet()
