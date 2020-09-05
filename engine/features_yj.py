@@ -8,6 +8,7 @@ import random
 # data
 import datetime
 import itertools
+import json
 
 class Features:
     def __init__(self):
@@ -248,6 +249,27 @@ class Features:
         self.train.loc[(self.train['holidays']==0) & (self.train['hours'].isin(prime_week)),'primetime'] = 1
         self.train.loc[(self.train['holidays']==0) & (self.train['hours'].isin(prime_week2)),'primetime'] = 2
 
+    def check_originalc_primet(self):
+        """
+        :objective: return 1 if its hour is within its original c's primetime
+        """
+        self.train['prime_origin'] = ""
+        hours_originalc = self.train.groupby(['hours', 'original_c']) \
+            ['취급액'].sum().rename("tot_sales").groupby(level=0, group_keys=False)
+        hours_originalc_list = hours_originalc.nlargest(2)
+        for hr, original_c_nm in hours_originalc_list.index:
+            self.train.prime_origin.loc[(self.train.hours == hr) & (self.train.original_c == original_c_nm)] = 1
+
+    def check_smallc_primet(self):
+        """
+        :objective: return 1 if its hour is within its small c's primetime
+        """
+        self.train['prime_smallc'] = ""
+        hours_smallc = self.train.groupby(['hours', 'small_c']) \
+            ['취급액'].sum().rename("tot_sales").groupby(level=0, group_keys=False)
+        hours_smallc_list = hours_smallc.nlargest(2)
+        for hr, small_c_nm in hours_smallc_list.index:
+            self.train.prime_smallc.loc[(self.train.hours == hr) & (self.train.small_c == small_c_nm)] = 1
 
     ############################
     ## sales/volume power variables
@@ -322,6 +344,28 @@ class Features:
                 pay.append('none')
         self.train['pay'] = pay
 
+    def get_dup_times(self):
+        """
+        :objective: get # of shows within the same category in a day
+        """
+        self.train['dup_times'] = ""
+        dup_times_list = self.train.groupby(['ymd', '상품군']) \
+            .show_id.nunique()
+        for ymd_idx, cate_idx in dup_times_list.index:
+            val = dup_times_list.loc[([(ymd_idx, cate_idx)])].values[0]
+            self.train.dup_times.loc[(self.train.ymd == ymd_idx) & (self.train.상품군 == cate_idx)] = val
+
+    def get_dup_times_smallc(self):
+        """
+        :objective: get # of shows within the same small_c in a day
+        """
+        self.train['dup_times'] = ""
+        dup_times_small_list = self.train.groupby(['ymd', 'small_c']) \
+            .show_id.nunique()
+        for ymd_idx, cate_idx in dup_times_small_list.index:
+            val = dup_times_small_list.loc[([(ymd_idx, cate_idx)])].values[0]
+            self.train.dup_times.loc[(self.train.ymd == ymd_idx) & (self.train.상품군 == cate_idx)] = val
+
 
     ############################
     ## External information
@@ -367,6 +411,21 @@ class Features:
         rate_mean = onair['rate_mean']
         self.train['vratings'] = rate_mean
 
+    def get_season_items(self):
+        """
+        :objective: create dummy vars(spring,summer,fall,winter) for seasonal items
+        """
+        with open("../data/11/seasonal.json") as json_file:
+            seasonal_items = json.load(json_file)
+        self.train['spring'] = 0
+        self.train['summer'] = 0
+        self.train['fall'] = 0
+        self.train['winter'] = 0
+        self.train.spring.loc[self.train['original_c'].isin(seasonal_items['spring'])] = 1
+        self.train.summer.loc[self.train['original_c'].isin(seasonal_items['summer'])] = 1
+        self.train.fall.loc[self.train['original_c'].isin(seasonal_items['fall'])] = 1
+        self.train.winter.loc[self.train['original_c'].isin(seasonal_items['winter'])] = 1
+
     def drop_na(self):
         """
         :objective: drop na rows and 취급액 == 50000
@@ -376,6 +435,9 @@ class Features:
         return rtn
 
     def run_all(self):
+        self.train = self.drop_na()
+        self.train = self.add_categories()
+
         self.get_time()
         self.get_weekday()
         self.get_hours_inweek()
@@ -383,24 +445,34 @@ class Features:
         self.get_red_days()
         self.get_weekends()
         self.get_min_start()
+
         self.filter_jappingt()
         self.fill_exposed_na()
+
         self.get_ymd()
         self.timeslot()
         self.get_show_id()
         self.get_min_range()
         self.add_showid_minran_to_train()
+
         self.get_primetime()
+        self.check_originalc_primet()
+        self.check_smallc_primet()
+
         self.get_sales_power()
         self.freq_items()
+        self.get_dup_times()
+        self.get_dup_times_smallc()
+
         self.check_brand_power()
         self.check_steady_sellers()
         self.check_men_items()
         self.check_luxury_items()
         self.check_pay()
+
         #self.add_vratings()
-        self.train = self.add_categories()
-        self.train = self.drop_na()
+        self.get_season_items()
+
         return self.train
 
 
