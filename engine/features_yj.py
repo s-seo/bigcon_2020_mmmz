@@ -41,6 +41,7 @@ class Features:
         self.train['months'] = self.train.방송일시.dt.month
         self.train['days'] = self.train.방송일시.dt.day
         self.train['hours'] = self.train.방송일시.dt.hour
+        self.train['week_num'] = self.train.방송일시.dt.isocalendar()['week']
 
     def get_weekday(self):
         """
@@ -367,6 +368,263 @@ class Features:
             self.train.dup_times.loc[(self.train.ymd == ymd_idx) & (self.train.상품군 == cate_idx)] = val
 
 
+
+    ############################
+    ## Lag features
+    ############################
+    def get_lag_scode_price(self):
+        """
+        :**objective: get previous week scode price
+        """
+        self.train['lag_scode_price'] = 0
+        weeknums = self.train['week_num'].unique()
+        for num in weeknums:
+            curr_wk = num
+            prev_wk = curr_wk-1
+            prev_wk_selector = (self.train['week_num'] == prev_wk)
+            if prev_wk == 0:
+                continue
+            train_subset = self.train[prev_wk_selector]
+            groups = train_subset[['상품코드','판매단가']].groupby(by = '상품코드')
+            grp = groups.agg({'판매단가':'mean'}).reset_index()
+            grp['week_num'] = curr_wk
+            grp = grp.rename(columns = {'판매단가':'lag_scode_price_temp'})
+            result = pd.merge(left = grp,  right = self.train, on = ['week_num','상품코드'],how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)
+            result = result.reset_index()
+            # merge
+            self.train.loc[self.train['week_num']==curr_wk,'lag_scode_price'] = result.loc[result.week_num==curr_wk,'lag_scode_price_temp']
+
+    def get_lag_scode_count(self):
+        """
+        :**objective: get previous week scode onair count
+        """
+        self.train['lag_scode_count'] = 0
+        weeknums = self.train['week_num'].unique()
+        for num in weeknums:
+            curr_wk = num
+            prev_wk = curr_wk-1
+            prev_wk_selector = (self.train['week_num'] == prev_wk)
+            if prev_wk == 0:
+                continue
+            train_subset = self.train[prev_wk_selector]
+            grp = train_subset.groupby(by = '상품코드').apply(lambda x: x.show_id.nunique())
+            grp = grp.to_frame(name = 'lag_scode_count_temp')
+            grp['week_num'] = curr_wk
+            result = pd.merge(left = grp,  right = self.train, on = ['week_num','상품코드'],how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)
+            result = result.reset_index()
+            # merge
+            self.train.loc[self.train['week_num']==curr_wk,'lag_scode_count'] = result.loc[result.week_num==curr_wk,'lag_scode_count_temp']
+
+    def get_lag_mcode_price(self):
+        """
+        :**objective: get previous week mcode price
+        """
+        self.train['lag_mcode_price'] = 0
+        weeknums = self.train['week_num'].unique()
+        for num in weeknums:
+            curr_wk = num
+            prev_wk = curr_wk-1
+            prev_wk_selector = (self.train['week_num'] == prev_wk)
+            if prev_wk == 0:
+                continue
+            train_subset = self.train[prev_wk_selector]
+            groups = train_subset[['마더코드','판매단가']].groupby(by = '마더코드')
+            grp = groups.agg({'판매단가':'mean'}).reset_index()
+            grp['week_num'] = curr_wk
+            grp = grp.rename(columns = {'판매단가':'lag_mcode_price_temp'})
+            result = pd.merge(left = grp,  right = self.train, on = ['week_num','마더코드'],how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)
+            result = result.reset_index()
+            # merge
+            self.train.loc[self.train['week_num']==curr_wk,'lag_mcode_price'] = result.loc[result.week_num==curr_wk,'lag_mcode_price_temp']
+
+    def get_lag_mcode_count(self):
+        """
+        :**objective: get previous week mcode onair count
+        """
+        self.train['lag_mcode_count'] = 0
+        weeknums = self.train['week_num'].unique()
+        for num in weeknums:
+            curr_wk = num
+            prev_wk = curr_wk-1
+            prev_wk_selector = (self.train['week_num'] == prev_wk)
+            if prev_wk == 0:
+                continue
+            train_subset = self.train[prev_wk_selector]
+            grp = train_subset.groupby(by = '마더코드').apply(lambda x: x.show_id.nunique())
+            grp = grp.to_frame(name = 'lag_mcode_count_temp')
+            grp['week_num'] = curr_wk
+            result = pd.merge(left = grp,  right = self.train, on = ['week_num','마더코드'],how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)
+            result = result.reset_index()
+            # merge
+            self.train.loc[self.train['week_num']==curr_wk,'lag_mcode_count'] = result.loc[result.week_num==curr_wk,'lag_mcode_count_temp']
+
+    def get_lag_bigcat_price(self):
+        """
+        :**objective: get previous week bigcat price
+        """
+        self.train['lag_bigcat_price'] = 0
+        weeknums = self.train['week_num'].unique()
+        for num in weeknums:
+            curr_wk = num
+            prev_wk = curr_wk-1
+            prev_wk_selector = (self.train['week_num'] == prev_wk)
+            if prev_wk == 0:
+                continue
+            train_subset = self.train[prev_wk_selector]
+            groups = train_subset[['상품군','판매단가']].groupby(by = '상품군')
+            grp = groups.agg({'판매단가':'mean'}).reset_index()
+            grp['week_num'] = curr_wk
+            grp = grp.rename(columns = {'판매단가':'lag_bigcat_price_temp'})
+            result = pd.merge(left = grp,  right = self.train, on = ['week_num','상품군'],how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            result = result.reset_index()
+            # merge
+            self.train.loc[self.train['week_num']==curr_wk,'lag_bigcat_price'] = result.loc[result.week_num==curr_wk,'lag_bigcat_price_temp']
+
+    def get_lag_bigcat_count(self):
+        """
+        :**objective: get previous week bigcat onair count
+        """
+        self.train['lag_bigcat_count'] = 0
+        weeknums = self.train['week_num'].unique()
+        for num in weeknums:
+            curr_wk = num
+            prev_wk = curr_wk-1
+            prev_wk_selector = (self.train['week_num'] == prev_wk)
+            if prev_wk == 0:
+                continue
+            train_subset = self.train[prev_wk_selector]
+            grp = train_subset.groupby(by = '상품군').apply(lambda x: x.show_id.nunique())
+            grp = grp.to_frame(name = 'lag_bigcat_count_temp')
+            grp['week_num'] = curr_wk
+            result = pd.merge(left = grp,  right = self.train, on = ['week_num','상품군'],how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            result = result.reset_index()
+            # merge
+            self.train.loc[self.train['week_num']==curr_wk,'lag_bigcat_count'] = result.loc[result.week_num==curr_wk,'lag_bigcat_count_temp']
+
+    def get_lag_bigcat_price_day(self):
+        """
+        :**objective: get previous day bigcat price
+        """
+        self.train['lag_bigcat_price_day'] = 0
+        daynums = self.train['ymd'].unique()
+        for i in range(0,len(daynums)):
+            if i == 0:
+                continue
+            curr_wk = daynums[i]
+            prev_wk = daynums[i-1]
+            prev_wk_selector = (self.train['ymd'] == prev_wk)
+            train_subset = self.train[prev_wk_selector]
+            groups = train_subset[['상품군','판매단가']].groupby(by = '상품군')
+            grp = groups.agg({'판매단가':'mean'}).reset_index()
+            grp['ymd'] = curr_wk
+            grp = grp.rename(columns = {'판매단가':'lag_bigcat_price_day_temp'})
+            result = pd.merge(left = grp, right = self.train, on = ['ymd','상품군'],how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            result = result.reset_index()
+            # merge
+            self.train.loc[self.train['ymd']==curr_wk,'lag_bigcat_price_day'] = result.loc[result.ymd==curr_wk,'lag_bigcat_price_day_temp']
+
+    def get_lag_bigcat_count_day(self):
+        """
+        :**objective: get previous day bigcat onair count
+        """
+        self.train['lag_bigcat_count_day'] = 0
+        daynums = self.train['ymd'].unique()
+        for i in range(0,len(daynums)):
+            if i == 0:
+                continue
+            curr_wk = daynums[i]
+            prev_wk = daynums[i-1]
+            prev_wk_selector = (self.train['ymd'] == prev_wk)
+            train_subset = self.train[prev_wk_selector]
+            grp = train_subset.groupby(by = '상품군').apply(lambda x: x.show_id.nunique())
+            grp = grp.to_frame(name = 'lag_bigcat_count_day_temp')
+            grp['ymd'] = curr_wk
+            result = pd.merge(left = grp,  right = self.train, on = ['ymd','상품군'],how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            result = result.reset_index()
+            # merge
+            self.train.loc[self.train['ymd']==curr_wk,'lag_bigcat_count_day'] = result.loc[result.ymd==curr_wk,'lag_bigcat_count_day_temp']
+
+    def get_lag_small_c_price(self):
+        """
+        :**objective: get previous week small_c price
+        """
+        self.train['lag_small_c_price'] = 0
+        weeknums = self.train['week_num'].unique()
+        for num in weeknums:
+            curr_wk = num
+            prev_wk = curr_wk-1
+            prev_wk_selector = (self.train['week_num'] == prev_wk)
+            if prev_wk == 0:
+                continue
+            train_subset = self.train[prev_wk_selector]
+            groups = train_subset[['small_c','판매단가']].groupby(by = 'small_c')
+            grp = groups.agg({'판매단가':'mean'}).reset_index()
+            grp['week_num'] = curr_wk
+            grp = grp.rename(columns = {'판매단가':'lag_small_c_price_temp'})
+            result = pd.merge(left = grp,  right = self.train, on = ['week_num','small_c'],how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            result = result.reset_index()
+            # merge
+            self.train.loc[self.train['week_num']==curr_wk,'lag_small_c_price'] = result.loc[result.week_num==curr_wk,'lag_small_c_price_temp']
+
+    def get_lag_small_c_count(self):
+        """
+        :**objective: get previous week small_c onair count
+        """
+        self.train['lag_small_c_count'] = 0
+        weeknums = self.train['week_num'].unique()
+        for num in weeknums:
+            curr_wk = num
+            prev_wk = curr_wk-1
+            prev_wk_selector = (self.train['week_num'] == prev_wk)
+            if prev_wk == 0:
+                continue
+            train_subset = self.train[prev_wk_selector]
+            grp = train_subset.groupby(by = 'small_c').apply(lambda x: x.show_id.nunique())
+            grp = grp.to_frame(name = 'lag_small_c_count_temp')
+            grp['week_num'] = curr_wk
+            result = pd.merge(left = grp,  right = self.train, on = ['week_num','small_c'],how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            result = result.reset_index()
+            # merge
+            self.train.loc[self.train['week_num']==curr_wk,'lag_small_c_count'] = result.loc[result.week_num==curr_wk,'lag_small_c_count_temp']
+
+    def get_lag_all_price_show(self):
+        self.train['lag_all_price_show'] = 0
+        daynums = self.train['show_id'].unique()
+        for i in range(0,len(daynums)):
+            if i == 0:
+                continue
+            curr_wk = daynums[i]
+            prev_wk = daynums[i-1]
+            prev_wk_selector = (self.train['ymd'] == prev_wk)
+            train_subset = self.train[prev_wk_selector]
+            mean_price = train_subset.판매단가.mean()
+            # merge
+            self.train.loc[self.train['ymd']==curr_wk,'lag_all_price_show'] = mean_price
+
+    def get_lag_all_price_day(self):
+        self.train['lag_all_price_day'] = 0
+        daynums = self.train['show_id'].unique()
+        for i in range(0,len(daynums)):
+            if i == 0:
+                continue
+            curr_wk = daynums[i]
+            prev_wk = daynums[i-1]
+            prev_wk_selector = (self.train['ymd'] == prev_wk)
+            train_subset = self.train[prev_wk_selector]
+            mean_price = train_subset.판매단가.mean()
+            # merge
+            self.train.loc[self.train['ymd']==curr_wk,'lag_all_price_day'] = mean_price
+
     ############################
     ## External information
     ############################
@@ -389,11 +647,11 @@ class Features:
         """
         :**objective: add vratings by rate mean
         """
-        onair = pd.read_csv("../data/vrating_defined.csv")
+        onair = pd.read_csv("../data/11/vrating_defined.csv")
         onair.상품코드 = onair.상품코드.dropna().astype(int).astype(str).str.zfill(6)
-        onair['방송일시'] = onair[['DATE','TIME']].agg(' '.join, axis=1)
-        onair['방송일시'] = pd.to_datetime(onair.방송일시, format="%Y/%m/%d %H:%M")
-        onair.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+        onair['schedule'] = onair[['DATE','TIME']].agg(' '.join, axis=1) ##schedule = 방송일시
+        onair['schedule'] = pd.to_datetime(onair.schedule, format="%Y/%m/%d %H:%M")
+        onair.sort_values(['schedule', '상품코드'], ascending=[True, True], inplace=True)
 
         #impute rate mean nan
         random.seed(100)
@@ -404,10 +662,12 @@ class Features:
                 continue
 
         # add noise to zero values
-        for i in range(0,len(self.train)):
+        for i in range(0,len(onair)):
             val = onair['rate_mean'].iloc[i]
             if val == 0 :
                 onair['rate_mean'].iloc[i] = np.random.uniform(0,1,1)[0]/1000000
+            else:
+                continue
         rate_mean = onair['rate_mean']
         self.train['vratings'] = rate_mean
 
@@ -464,13 +724,26 @@ class Features:
         self.get_dup_times()
         self.get_dup_times_smallc()
 
+        self.get_lag_scode_price()
+        self.get_lag_scode_count()
+        self.get_lag_mcode_price()
+        self.get_lag_mcode_count()
+        self.get_lag_bigcat_price()
+        self.get_lag_bigcat_count()
+        self.get_lag_bigcat_price_day()
+        self.get_lag_bigcat_count_day()
+        self.get_lag_small_c_price()
+        self.get_lag_small_c_count()
+        self.get_lag_all_price_show()
+        self.get_lag_all_price_day()
+
         self.check_brand_power()
         self.check_steady_sellers()
         self.check_men_items()
         self.check_luxury_items()
         self.check_pay()
 
-        #self.add_vratings()
+        self.add_vratings()
         self.get_season_items()
 
         return self.train
