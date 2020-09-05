@@ -649,7 +649,7 @@ class Features:
         """
         onair = pd.read_csv("../data/11/vrating_defined.csv")
         onair.상품코드 = onair.상품코드.dropna().astype(int).astype(str).str.zfill(6)
-        onair['schedule'] = onair[['DATE','TIME']].agg(' '.join, axis=1) ##schedule = 방송일시
+        onair['schedule'] = onair[['DATE','TIME']].agg(' '.join, axis=1) ##schedule = 방송일
         onair['schedule'] = pd.to_datetime(onair.schedule, format="%Y/%m/%d %H:%M")
         onair.sort_values(['schedule', '상품코드'], ascending=[True, True], inplace=True)
 
@@ -750,6 +750,6 @@ class Features:
 
 
 
-t = Features()
-train = t.run_all()
-train.to_excel("../data/01/2019sales_v2.xlsx")
+#t = Features()
+#train = t.run_all()
+#train.to_excel("../data/01/2019sales_v2.xlsx")
