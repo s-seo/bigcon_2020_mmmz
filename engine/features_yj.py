@@ -639,7 +639,7 @@ class Features:
         categories.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
         categories.rename(columns={' 취급액 ': '취급액'}, inplace=True)
         self.train = pd.merge(left=self.train,
-                          right=categories[['방송일시', '상품코드', 'brand', 'original_c', 'small_c', 'small_c_code','middle_c','middle_c_code','big_c']],
+                          right=categories[['방송일시', '상품코드', 'brand', 'original_c', 'small_c', 'small_c_code','middle_c','middle_c_code','big_c','big_c_code']],
                           how='inner', on=['방송일시', '상품코드'], sort=False)
 
     def add_vratings(self):
@@ -684,6 +684,53 @@ class Features:
         self.train.summer.loc[self.train['original_c'].isin(seasonal_items['summer'])] = 1
         self.train.fall.loc[self.train['original_c'].isin(seasonal_items['fall'])] = 1
         self.train.winter.loc[self.train['original_c'].isin(seasonal_items['winter'])] = 1
+
+    def add_small_c_clickr(self):
+        """
+        :objective: add click ratio column (small_c)
+        """
+        smallc_comb = pd.read_excel("../data/11/small_comb.xlsx")
+        smallc_comb['ymd'] = pd.to_datetime(smallc_comb.date.astype(str)).dt.date
+        self.train = pd.merge(left=self.train,
+                         right=smallc_comb[['small_c_code', 'ymd', 'small_click_r']],
+                         how='inner', on=['small_c_code', 'ymd'], sort=False)
+
+    def add_mid_c_clickr(self):
+        """
+        :objective: add click ratio column (mid_c)
+        """
+        midc_comb = pd.read_excel("../data/11/mid_comb.xlsx")
+        midc_comb['ymd'] = pd.to_datetime(midc_comb.date.astype(str)).dt.date
+        midc_comb['middle_c_code'] = midc_comb['mid_c_code']
+        self.train = pd.merge(left=self.train,
+                         right=midc_comb[['middle_c_code', 'ymd', 'mid_click_r']],
+                         how='inner', on=['middle_c_code', 'ymd'], sort=False)
+
+    def add_big_c_clickr(self):
+        """
+        :objective: add click ratio column (big_c)
+        """
+        bigc_comb = pd.read_excel("../data/11/big_comb.xlsx")
+        bigc_comb['ymd'] = pd.to_datetime(bigc_comb.date.astype(str)).dt.date
+        self.train = pd.merge(left=self.train,
+                         right=bigc_comb[['big_c_code', 'ymd', 'big_click_r']],
+                         how='inner', on=['big_c_code', 'ymd'], sort=False)
+
+    def get_weather(self):
+        """
+        :objective: get weather(rain, temp_diff info)
+        """
+        weather = pd.read_excel("../data/11/weather_diff.xlsx")
+        weather.ymd = weather.ymd.dt.date
+        self.train = pd.merge(left=self.train,
+                         right=weather[['ymd', 'rain', 'temp_diff_s']],
+                         how='left', on=['ymd'], sort=False)
+        self.train.rain.loc[self.train.rain.isna()] = weather.rain.loc[len(weather) - 1]
+        self.train.temp_diff_s.loc[self.train.temp_diff_s.isna()] = weather.temp_diff_s.loc[len(weather) - 1]
+
+    ############################
+    ## Combine
+    ############################
 
     def drop_na(self):
         """
@@ -744,11 +791,15 @@ class Features:
 
         self.add_vratings()
         self.get_season_items()
+        self.add_small_c_clickr()
+        self.add_mid_c_clickr()
+        self.add_big_c_clickr()
+        self.get_weather()
 
         return self.train
 
 
 
-#t = Features()
-#train = t.run_all()
-#train.to_excel("../data/01/2019sales_v2.xlsx")
+t = Features()
+train = t.run_all()
+train.to_excel("../data/01/2019sales_v2.xlsx")
