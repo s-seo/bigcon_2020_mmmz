@@ -86,7 +86,7 @@ class CategoricalTransformer( BaseEstimator, TransformerMixin ):
 ## unite Features
 
 # Categrical features to pass down the categorical pipeline
-cateforical_features = ['small_c',... ]
+categorical_features = ['small_c',... ]
 
 # Numerical features to pass down the numerical pipeline
 numerical_features = ['sales_power',...]
