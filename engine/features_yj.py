@@ -800,6 +800,6 @@ class Features:
 
 
 
-t = Features()
-train = t.run_all()
-train.to_excel("../data/01/2019sales_v2.xlsx")
+#t = Features()
+#train = t.run_all()
+#train.to_excel("../data/01/2019sales_v2.xlsx")
