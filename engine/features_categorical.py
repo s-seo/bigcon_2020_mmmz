@@ -10,23 +10,6 @@ from sklearn.pipeline import FeatureUnion, Pipeline
 ## full pipeline에 모델 붙이면 y_train, y_test 구할 수 있음
 
 
-
-## create selector : column 이름에 따라 df의 column 선택해줌
-class FeatureSelector( BaseEstimator, TransformerMixin ):
-    #Class Constructor
-    def __init__( self, feature_names ):
-        self._feature_names = feature_names
-
-    #Return self nothing else to do here
-    def fit( self, X, y = None ):
-        return self
-
-    #Method that describes what we need this transformer to do
-    def transform( self, X, y = None ):
-        return X[ self._feature_names ]
-
-
-
 ## create catagorical transformer
 class CategoricalTransformer( BaseEstimator, TransformerMixin ):
     #Class constructor method that takes in a list of values as its argument
@@ -80,39 +63,3 @@ class CategoricalTransformer( BaseEstimator, TransformerMixin ):
        return X.values
 
 
-
-
-
-## unite Features
-
-# Categrical features to pass down the categorical pipeline
-cateforical_features = ['small_c',... ]
-
-# Numerical features to pass down the numerical pipeline
-numerical_features = ['sales_power',...]
-
-# Defining the steps in the categorical pipeline
-categorical_pipeline = Pipeline( steps = [ ( 'cat_selector', FeatureSelector(categorical_features) ),
-
-                                  ( 'cat_transformer', CategoricalTransformer() ),
-
-                                  ( 'one_hot_encoder', OneHotEncoder( sparse = False ) ) ] )
-
-# Defining the steps in the numerical pipeline
-numerical_pipeline = Pipeline( steps = [ ( 'num_selector', FeatureSelector(numerical_features) ),
-
-                                  ( 'num_transformer', NumericalTransformer() ),
-
-                                  ('imputer', SimpleImputer(strategy = 'mean') ),
-
-                                  ( 'std_scaler', StandardScaler() ) ] )
-
-
-
-## merge into full Pipeline
-
-# Combining numerical and categorical piepline into one full big pipeline horizontally
-# using FeatureUnion
-full_pipeline = FeatureUnion( transformer_list = [ ( 'categorical_pipeline', categorical_pipeline ),
-
-                                                  ( 'numerical_pipeline', numerical_pipeline ) ] )

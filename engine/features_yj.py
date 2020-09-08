@@ -254,7 +254,7 @@ class Features:
         """
         :objective: return 1 if its hour is within its original c's primetime
         """
-        self.train['prime_origin'] = ""
+        self.train['prime_origin'] = 0
         hours_originalc = self.train.groupby(['hours', 'original_c']) \
             ['취급액'].sum().rename("tot_sales").groupby(level=0, group_keys=False)
         hours_originalc_list = hours_originalc.nlargest(2)
@@ -265,7 +265,7 @@ class Features:
         """
         :objective: return 1 if its hour is within its small c's primetime
         """
-        self.train['prime_smallc'] = ""
+        self.train['prime_smallc'] = 0
         hours_smallc = self.train.groupby(['hours', 'small_c']) \
             ['취급액'].sum().rename("tot_sales").groupby(level=0, group_keys=False)
         hours_smallc_list = hours_smallc.nlargest(2)
@@ -349,7 +349,7 @@ class Features:
         """
         :objective: get # of shows within the same category in a day
         """
-        self.train['dup_times'] = ""
+        self.train['dup_times'] = 0
         dup_times_list = self.train.groupby(['ymd', '상품군']) \
             .show_id.nunique()
         for ymd_idx, cate_idx in dup_times_list.index:
@@ -360,7 +360,7 @@ class Features:
         """
         :objective: get # of shows within the same small_c in a day
         """
-        self.train['dup_times'] = ""
+        self.train['dup_times'] = 0
         dup_times_small_list = self.train.groupby(['ymd', 'small_c']) \
             .show_id.nunique()
         for ymd_idx, cate_idx in dup_times_small_list.index:
