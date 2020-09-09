@@ -118,7 +118,18 @@ class Features:
         """
         :** objective: get startig time (min)
         """
-        self.train['min_start'] = self.train.방송일시.dt.minute
+        temp = self.train.방송일시.dt.minute
+        min_start = []
+        for i in range(0, len(self.train)):
+            time = temp[i]
+            if (time < 20) & (time >= 0):
+                rtn = 0
+            elif (time < 40) & (time >= 20):
+                rtn = 20
+            else:
+                rtn = 40
+            min_start.append(rtn)
+        self.train['min_start'] = min_start
         #list(set(train.방송일시.dt.minute)) #unique
 
     def filter_jappingt(self):
@@ -605,11 +616,11 @@ class Features:
                 continue
             curr_wk = daynums[i]
             prev_wk = daynums[i-1]
-            prev_wk_selector = (self.train['ymd'] == prev_wk)
+            prev_wk_selector = (self.train['show_id'] == prev_wk)
             train_subset = self.train[prev_wk_selector]
             mean_price = train_subset.판매단가.mean()
             # merge
-            self.train.loc[self.train['ymd']==curr_wk,'lag_all_price_show'] = mean_price
+            self.train.loc[self.train['show_id']==curr_wk,'lag_all_price_show'] = mean_price
 
     def get_lag_all_price_day(self):
         self.train['lag_all_price_day'] = 0
@@ -619,11 +630,11 @@ class Features:
                 continue
             curr_wk = daynums[i]
             prev_wk = daynums[i-1]
-            prev_wk_selector = (self.train['ymd'] == prev_wk)
+            prev_wk_selector = (self.train['show_id'] == prev_wk)
             train_subset = self.train[prev_wk_selector]
             mean_price = train_subset.판매단가.mean()
             # merge
-            self.train.loc[self.train['ymd']==curr_wk,'lag_all_price_day'] = mean_price
+            self.train.loc[self.train['show_id']==curr_wk,'lag_all_price_day'] = mean_price
 
     ############################
     ## External information
@@ -739,6 +750,14 @@ class Features:
         self.train = self.train[self.train['취급액'].notna()]
         self.train = self.train[self.train['취급액']!= 50000]
 
+    def price_to_rate(self):
+        """
+        :objective: drop na rows and 취급액 == 50000
+        """
+        lag_price_col = ['lag_mcode_price','lag_bigcat_price','lag_small_c_price','lag_bigcat_price_day','lag_all_price_show','lag_all_price_day']
+        for col in lag_price_col:
+            self.train[col] = self.train[col]/self.train['판매단가']
+
     def run_all(self):
 
         self.get_time()
@@ -770,7 +789,7 @@ class Features:
         self.get_dup_times()
         self.get_dup_times_smallc()
 
-        self.get_lag_scode_price()
+        #self.get_lag_scode_price()
         self.get_lag_scode_count()
         self.get_lag_mcode_price()
         self.get_lag_mcode_count()
@@ -795,6 +814,8 @@ class Features:
         self.add_mid_c_clickr()
         self.add_big_c_clickr()
         self.get_weather()
+
+        self.price_to_rate()
 
         return self.train
 
