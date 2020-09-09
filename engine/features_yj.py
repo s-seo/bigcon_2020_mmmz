@@ -41,7 +41,7 @@ class Features:
         self.train['months'] = self.train.방송일시.dt.month
         self.train['days'] = self.train.방송일시.dt.day
         self.train['hours'] = self.train.방송일시.dt.hour
-        self.train['week_num'] = self.train.방송일시.dt.isocalendar()['week']
+        self.train['week_num'] = self.train.방송일시.dt.week
 
     def get_weekday(self):
         """
@@ -371,14 +371,12 @@ class Features:
         """
         :objective: get # of shows within the same small_c in a day
         """
-        self.train['dup_times'] = 0
+        self.train['dup_times_smallc'] = 0
         dup_times_small_list = self.train.groupby(['ymd', 'small_c']) \
             .show_id.nunique()
         for ymd_idx, cate_idx in dup_times_small_list.index:
             val = dup_times_small_list.loc[([(ymd_idx, cate_idx)])].values[0]
-            self.train.dup_times.loc[(self.train.ymd == ymd_idx) & (self.train.상품군 == cate_idx)] = val
-
-
+            self.train.dup_times_smallc.loc[(self.train.ymd == ymd_idx) & (self.train.small_c == cate_idx)] = val
 
     ############################
     ## Lag features
@@ -821,6 +819,6 @@ class Features:
 
 
 
-#t = Features()
-#train = t.run_all()
-#train.to_excel("../data/01/2019sales_v2.xlsx")
+t = Features()
+train = t.run_all()
+train.to_excel("../data/01/2019sales_v2.xlsx")
