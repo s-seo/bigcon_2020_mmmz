@@ -157,6 +157,19 @@ class Features:
         """
         self.train["exposed"].fillna(self.train.groupby('방송일시')['exposed'].transform('mean'), inplace = True)
 
+    def round_exposed(self):
+        """
+        :objective: round exposed variable to  avoid imbalance
+        """
+        self.train['exposed_t'] = self.train.exposed
+        for i in self.train.exposed.unique():
+            if i < 25:
+                rtn = 20
+            else:
+                rtn = 30
+            self.train.exposed_t.loc[self.train.exposed == i] = rtn
+
+
     def get_ymd(self):
         """
         :objective: add 'ymd' variable to train dataset
@@ -290,7 +303,7 @@ class Features:
         """
         :objective: get sales power of each product, sum(exposed time)/sum(sales volume)
         """
-        self.train['sales_power'] = ""
+        self.train['sales_power'] = 0
         bp = self.train.groupby('상품코드').exposed.sum()/self.train.groupby('상품코드').volume.sum()
         for i in bp.index:
             self.train.sales_power.loc[self.train.상품코드 == i] = bp.loc[i]
@@ -330,8 +343,7 @@ class Features:
         :objective: create a dummy variable to identify products for men
         """
         mens_category = ["의류", "이미용", "잡화", "속옷"]  # only for these categories
-        self.train['men'] = ""
-        self.train.men[self.train['상품군'].isin(mens_category)] = 0
+        self.train['men'] = 0
         self.train.men[self.train['상품군'].isin(mens_category) & self.train['상품명'].str.contains("남성")] = 1
 
     def check_luxury_items(self):
@@ -725,6 +737,47 @@ class Features:
                          right=bigc_comb[['big_c_code', 'ymd', 'big_click_r']],
                          how='inner', on=['big_c_code', 'ymd'], sort=False)
 
+    def add_age_click_ratio(self):
+        """
+        :objective: add click ratio by age
+        :return:
+        """
+        age_click = pd.read_excel("../data/11/age_click.xlsx")
+        age_click['ymd'] = pd.to_datetime(age_click.date.astype(str)).dt.date
+        self.train = pd.merge(left=self.train,
+                         right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
+                         how='inner', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+        self.train = pd.merge(left=self.train,
+                         right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
+                         how='inner', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
+                         suffixes=['_small', '_middle'])
+        self.train = pd.merge(left=self.train,
+                         right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
+                         how='inner', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+        self.train.drop(['cat_code', 'cat_code_small', 'cat_code_middle'], axis=1, inplace=True)
+        self.train = self.train.rename(
+            columns={'age30': 'age30_big', 'age40': 'age40_big', 'age50': 'age50_big', 'age60above': 'age60above_big'})
+
+    def add_device_click_ratio(self):
+        """
+        :objective: add click ratio by device type(mobile/pc)
+        :return:
+        """
+        device_click = pd.read_excel("../data/11/dev_click.xlsx")
+        device_click['ymd'] = pd.to_datetime(device_click.date.astype(str)).dt.date
+        self.train = pd.merge(left=self.train,
+                         right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
+                         how='inner', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+        self.train = pd.merge(left=self.train,
+                         right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
+                         how='inner', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
+                         suffixes=['_small', '_middle'])
+        self.train = pd.merge(left=self.train,
+                         right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
+                         how='inner', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+        self.train.drop(['cat_code', 'cat_code_small', 'cat_code_middle'], axis=1, inplace=True)
+        self.train = self.train.rename(columns={'pc': 'pc_big', 'mobile': 'mobile_big'})
+
     def get_weather(self):
         """
         :objective: get weather(rain, temp_diff info)
@@ -814,6 +867,9 @@ class Features:
         self.get_weather()
 
         self.price_to_rate()
+        self.round_exposed()
+        self.add_age_click_ratio()
+        self.add_device_click_ratio()
 
         return self.train
 
