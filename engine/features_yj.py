@@ -168,7 +168,7 @@ class Features:
             else:
                 rtn = 30
             self.train.exposed_t.loc[self.train.exposed == i] = rtn
-
+        self.train.exposed_t = self.train.exposed_t.astype('category')
 
     def get_ymd(self):
         """
