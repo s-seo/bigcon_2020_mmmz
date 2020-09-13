@@ -695,7 +695,7 @@ class Features:
         """
         :objective: create dummy vars(spring,summer,fall,winter) for seasonal items
         """
-        with open("../data/11/seasonal.json", encoding='UTF8') as json_file:
+        with open("../data/11/seasonal.json") as json_file:
             seasonal_items = json.load(json_file)
         self.train['spring'] = 0
         self.train['summer'] = 0
