@@ -10,6 +10,7 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.decomposition import PCA
 
 
 # if separate df with all features is existent, set path
@@ -187,14 +188,23 @@ def drop_cat(df_pca):
 # scalers
 # Min-max가 좀 더 일반적이지만 Standard는 outlier 영향을 적게 받는다는 장점이 있습니당
 
-def run_minmax(df_pca):
+def run_stdscale(df_pca):
     """
     :objective: scale / all columns should be numeric!!!
     :return: pandas dataframe
     """
-    scaler = MinMaxScaler()
+    scaler = StandardScaler()
     scaled = scaler.fit_transform(df_pca)
 
     return scaled
 
-# def _run_preprocess(pickle_path):
+def run_pca(df_pca_scaled, n_components = 10):
+    """
+    :objective: Run PCA with n_components = 10
+    :return: pandas dataframe
+    """
+    pca = PCA(n_components=10)
+    pca.fit(df_pca_scaled)
+    df_pca = pca.transform(df_pca_scaled)
+
+    return df_pca
