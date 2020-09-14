@@ -1,15 +1,10 @@
+# import libraries
+from features_yj import Features
+
 import warnings
 warnings.filterwarnings("ignore")
-import pandas as pd
-import numpy as np
-import math
-import random
 
-# data
-import datetime
-import itertools
-import json
-import pickle
+import pandas as pd
 
 # sklearn
 from sklearn.ensemble import IsolationForest
@@ -17,26 +12,22 @@ from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.decomposition import PCA
 
-# custom class
-from features_yj import Features
-
 
 # if separate df with all features is existent, set path
 # otherwise merge raw df with Features module
 
-df_path = 'path of df'
+df_path = '../data/20/'
 
-def load_df_added(df, path = True):
+def load_df_added(df):
     """
     :objective: load data
     :return: pandas dataframe
     """
-    if path :
-        df = pd.read_pickle(df_path)
-    else:
+    try:
+        df = pd.read_pickle(df_path+df)
+    except:
         t = Features()
         df = t.run_all()
-
     return df
 
 
@@ -51,10 +42,10 @@ def drop_useless(df, keepshowid = True):
             'years','days','hours','week_num','holidays', 'red', 'min_range','brand','original_c',
             'small_c_code','middle_c_code','big_c_code','sales_power']
     col = [x for x in df.columns if x in xcol]
-    df = df.drop(columns = col)
-    if keepshowid:
-        continue
-    df.drop(columns = ['show_id'])
+    df = df.drop(columns=col)
+    if not keepshowid:
+        df.drop(columns=['show_id'])
+    return df
 
 
 
