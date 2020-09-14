@@ -787,7 +787,7 @@ class Features:
         """
         if type == 'Prophet':
             ts_pred = pd.read_pickle("../data/12/prophet_pred.pkl")
-        pd.merge(left=self.train, right=ts_pred[['ymd', 'hours', 'ts_pred']], on=['ymd', 'hours'], sort=False,
+        self.train = pd.merge(left=self.train, right=ts_pred[['ymd', 'hours', 'ts_pred']], on=['ymd', 'hours'], sort=False,
                  how='left')
 
     ############################
@@ -868,7 +868,7 @@ class Features:
         smallc_comb['ymd'] = pd.to_datetime(smallc_comb.date.astype(str)).dt.date
         self.train = pd.merge(left=self.train,
                               right=smallc_comb[['small_c_code', 'ymd', 'small_click_r']],
-                              how='inner', on=['small_c_code', 'ymd'], sort=False)
+                              how='left', on=['small_c_code', 'ymd'], sort=False)
 
     def add_mid_c_clickr(self):
         """
@@ -879,7 +879,7 @@ class Features:
         midc_comb['middle_c_code'] = midc_comb['mid_c_code']
         self.train = pd.merge(left=self.train,
                               right=midc_comb[['middle_c_code', 'ymd', 'mid_click_r']],
-                              how='inner', on=['middle_c_code', 'ymd'], sort=False)
+                              how='left', on=['middle_c_code', 'ymd'], sort=False)
 
     def add_big_c_clickr(self):
         """
@@ -889,7 +889,7 @@ class Features:
         bigc_comb['ymd'] = pd.to_datetime(bigc_comb.date.astype(str)).dt.date
         self.train = pd.merge(left=self.train,
                               right=bigc_comb[['big_c_code', 'ymd', 'big_click_r']],
-                              how='inner', on=['big_c_code', 'ymd'], sort=False)
+                              how='left', on=['big_c_code', 'ymd'], sort=False)
 
     def add_age_click_ratio(self):
         """
@@ -900,14 +900,14 @@ class Features:
         age_click['ymd'] = pd.to_datetime(age_click.date.astype(str)).dt.date
         self.train = pd.merge(left=self.train,
                               right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
-                              how='inner', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+                              how='left', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
         self.train = pd.merge(left=self.train,
                               right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
-                              how='inner', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
+                              how='left', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
                               suffixes=['_small', '_middle'])
         self.train = pd.merge(left=self.train,
                               right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
-                              how='inner', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+                              how='left', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
         self.train.drop(['cat_code', 'cat_code_small', 'cat_code_middle'], axis=1, inplace=True)
         self.train = self.train.rename(
             columns={'age30': 'age30_big', 'age40': 'age40_big', 'age50': 'age50_big', 'age60above': 'age60above_big'})
@@ -921,14 +921,14 @@ class Features:
         device_click['ymd'] = pd.to_datetime(device_click.date.astype(str)).dt.date
         self.train = pd.merge(left=self.train,
                               right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
-                              how='inner', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+                              how='left', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
         self.train = pd.merge(left=self.train,
                               right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
-                              how='inner', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
+                              how='left', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
                               suffixes=['_small', '_middle'])
         self.train = pd.merge(left=self.train,
                               right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
-                              how='inner', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+                              how='left', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
         self.train.drop(['cat_code', 'cat_code_small', 'cat_code_middle'], axis=1, inplace=True)
         self.train = self.train.rename(columns={'pc': 'pc_big', 'mobile': 'mobile_big'})
 
@@ -946,8 +946,8 @@ class Features:
         self.train = pd.merge(left=self.train,
                               right=weather[['ymd', 'rain', 'temp_diff_s']],
                               how='left', on=['ymd'], sort=False)
-        self.train.rain.loc[self.train.rain.isna()] = weather.rain.loc[len(weather) - 1]
-        self.train.temp_diff_s.loc[self.train.temp_diff_s.isna()] = weather.temp_diff_s.loc[len(weather) - 1]
+        # self.train.rain.loc[self.train.rain.isna()] = weather.rain.loc[len(weather) - 1]
+        # self.train.temp_diff_s.loc[self.train.temp_diff_s.isna()] = weather.temp_diff_s.loc[len(weather) - 1]
 
     ############################
     ## Combine
@@ -1015,8 +1015,13 @@ class Features:
         self.get_lag_small_c_count()
         self.get_lag_all_price_show()
         self.get_lag_all_price_day()
+        print("finish getting all lag data")
+        print(self.train.shape, ": df shape")
 
         self.check_brand_power()
+        print("finish getting brand power data")
+        print(self.train.shape, ": df shape")
+
         self.check_steady_sellers()
         self.check_men_items()
         self.check_luxury_items()
@@ -1024,27 +1029,44 @@ class Features:
 
         # self.add_vratings()
         self.get_season_items()
+        print("finish getting season_items data")
+        print(self.train.shape, ": df shape")
         self.add_small_c_clickr()
+        print("finish getting click ratio data")
+        print(self.train.shape, ": df shape")
+
         self.add_mid_c_clickr()
+        print("finish getting click ratio data")
+        print(self.train.shape, ": df shape")
         self.add_big_c_clickr()
+        print("finish getting click ratio data")
+        print(self.train.shape, ": df shape")
         self.get_weather()
+        print("finish getting weather data")
+        print(self.train.shape, ": df shape")
 
         self.price_to_rate()
         self.round_exposed()
         self.add_age_click_ratio()
         self.add_device_click_ratio()
+        print("finish getting add_device_click_ratio data")
+        print(self.train.shape, ": df shape")
         self.get_rolling_means()
+        print("finish getting get_rolling_means data")
+        print(self.train.shape, ": df shape")
         self.get_lag_sales()
+        print("finish getting get_lag_sales data")
+        print(self.train.shape, ": df shape")
         self.get_ts_pred()
+        print("finish getting get_ts_pred data")
+        print(self.train.shape, ": df shape")
 
         return self.train
 
 
-# t = Features()
-# train = t.run_all()
-# #train.to_excel("../data/01/2019sales_v2.xlsx")
-#
-# train.to_pickle("../data/20/train_v2.pkl")
-t = Features(test=True)
-test_v2 = t.run_all()
-test_v2.to_pickle("../data/20/test_v2.pkl")
+t = Features()
+train = t.run_all()
+train.to_pickle("../data/20/train_v2.pkl")
+# t = Features(test=True)
+# test_v2 = t.run_all()
+# test_v2.to_pickle("../data/20/test_v2.pkl")
