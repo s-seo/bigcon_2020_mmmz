@@ -1,10 +1,15 @@
-# import libraries
-from features_yj import Features
-
 import warnings
 warnings.filterwarnings("ignore")
-
 import pandas as pd
+import numpy as np
+import math
+import random
+
+# data
+import datetime
+import itertools
+import json
+import pickle
 
 # sklearn
 from sklearn.ensemble import IsolationForest
@@ -12,22 +17,26 @@ from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.decomposition import PCA
 
+# custom class
+# from features_yj import Features
+
 
 # if separate df with all features is existent, set path
 # otherwise merge raw df with Features module
 
-df_path = '../data/20/'
+df_path = 'path of df'
 
-def load_df_added(df):
+def load_df_added(df, path = True):
     """
     :objective: load data
     :return: pandas dataframe
     """
-    try:
-        df = pd.read_pickle(df_path+df)
-    except:
+    if path :
+        df = pd.read_pickle(df_path)
+    else:
         t = Features()
         df = t.run_all()
+
     return df
 
 
@@ -42,9 +51,12 @@ def drop_useless(df, keepshowid = True):
             'years','days','hours','week_num','holidays', 'red', 'min_range','brand','original_c',
             'small_c_code','middle_c_code','big_c_code','sales_power']
     col = [x for x in df.columns if x in xcol]
-    df = df.drop(columns=col)
-    if not keepshowid:
-        df.drop(columns=['show_id'])
+    df = df.drop(columns = col)
+    if keepshowid:
+        df = df.copy()
+    else:
+        df = df.drop(columns = ['show_id'])
+
     return df
 
 
@@ -79,9 +91,9 @@ def run_onehot(df):
     :objective: Perform ohe for categorical columns
     :return: pandas dataframe
     """
-    cat_col = ['min_start','japp','parttime', 'primetime','exposed_t','상품군','weekdays', 'small_c','middle_c','big_c', 'pay','men']
-    num = df.drop(columns = cat_col)
-    X1 = df[cat_col]
+    cats_col = ['min_start','japp','parttime', 'primetime','exposed_t','상품군','weekdays', 'small_c','middle_c','big_c', 'pay','men']
+    num = df.drop(columns = cats_col)
+    X1 = df[cats_col]
     # Onehotencoder
     ohe = OneHotEncoder()
     ohe.fit(X1)
@@ -207,4 +219,4 @@ def run_pca(df_pca_scaled, n_components = 10):
     pca.fit(df_pca_scaled)
     df_pca = pca.transform(df_pca_scaled)
 
-    return df_pca
+    return pd.DataFrame(df_pca)
