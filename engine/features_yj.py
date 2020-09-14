@@ -1,3 +1,6 @@
+import warnings
+
+warnings.filterwarnings("ignore")
 
 # stat
 import pandas as pd
@@ -10,24 +13,34 @@ import datetime
 import itertools
 import json
 
+
 class Features:
-    def __init__(self):
-        ## load data
-        self.train = pd.read_csv("../data/00/2019sales.csv", skiprows = 1)
-        self.train.rename(columns={' 취급액 ': '취급액'}, inplace = True)
-        self.train['exposed']  = self.train['노출(분)']
+    def __init__(self, test=False):
+        self.is_test = test
+        # load test data
+        if self.is_test:
+            df = pd.read_excel("../data/00/202006schedule.xlsx", skiprows=1)
+
+        # load train data
+        else:
+            df = pd.read_csv("../data/00/2019sales.csv", skiprows=1)
+            df.rename(columns={' 취급액 ': '취급액'}, inplace=True)
+            df.취급액 = df.취급액.str.replace(",", "").astype(float)
+            df.판매단가 = df.판매단가.str.replace(",", "").replace(' - ', np.nan).astype(float)
+            df['volume'] = df['취급액'] / df['판매단가']
+
+        df['exposed'] = df['노출(분)']
         # define data types
-        self.train.마더코드 = self.train.마더코드.astype(int).astype(str).str.zfill(6)
-        self.train.상품코드 = self.train.상품코드.astype(int).astype(str).str.zfill(6)
-        self.train.취급액 = self.train.취급액.str.replace(",","").astype(float)
-        self.train.판매단가 = self.train.판매단가.str.replace(",","").replace(' - ', np.nan).astype(float)
-        self.train.방송일시 = pd.to_datetime(self.train.방송일시, format="%Y/%m/%d %H:%M")
-        self.train.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)
-        self.train['ymd'] = [d.date() for d in self.train["방송일시"]]
-        self.train['volume'] = self.train['취급액'] / self.train['판매단가']
+        df.마더코드 = df.마더코드.astype(int).astype(str).str.zfill(6)
+        df.상품코드 = df.상품코드.astype(int).astype(str).str.zfill(6)
+        df.방송일시 = pd.to_datetime(df.방송일시, format="%Y/%m/%d %H:%M")
+        df.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+
+        df['ymd'] = [d.date() for d in df["방송일시"]]
+        self.train = df
         # define ts_schedule, one row for each timeslot
-        self.ts_schedule = self.train.copy().groupby('방송일시').first()
-        self.ts_schedule.reset_index(inplace = True)
+        self.ts_schedule = df.copy().groupby('방송일시').first()
+        self.ts_schedule.reset_index(inplace=True)
 
     ##################################
     ## onair time/order info variables
@@ -57,19 +70,19 @@ class Features:
         for i in range(0, len(self.train)):
             hr = self.train['hours'].iloc[i]
             dy = self.train['weekdays'].iloc[i]
-            if dy == 'Tuesday' :
-                hours_inweek.append(hr+24)
-            elif dy == 'Wednesday' :
-                hours_inweek.append(hr+24*2)
-            elif dy == 'Thursday' :
-                hours_inweek.append(hr+24*3)
-            elif dy == 'Friday' :
-                hours_inweek.append(hr+24*4)
-            elif dy == 'Saturday' :
-                hours_inweek.append(hr+24*5)
-            elif dy == 'Sunday' :
-                hours_inweek.append(hr+24*6)
-            else :
+            if dy == 'Tuesday':
+                hours_inweek.append(hr + 24)
+            elif dy == 'Wednesday':
+                hours_inweek.append(hr + 24 * 2)
+            elif dy == 'Thursday':
+                hours_inweek.append(hr + 24 * 3)
+            elif dy == 'Friday':
+                hours_inweek.append(hr + 24 * 4)
+            elif dy == 'Saturday':
+                hours_inweek.append(hr + 24 * 5)
+            elif dy == 'Sunday':
+                hours_inweek.append(hr + 24 * 6)
+            else:
                 hours_inweek.append(hr)
         self.train['hours_inweek'] = hours_inweek
 
@@ -78,16 +91,20 @@ class Features:
         :** objective: create a dummy variable for holidays (weekends + red)
         """
         holidays = []
-        holiday_dates = ['2019-01-01', '2019-02-04','2019-02-05','2019-02-06',
-                          '2019-03-01','2019-05-06','2019-06-06','2019-08-15',
-                          '2019-09-12','2019-09-13','2019-10-03','2019-10-09',
-                          '2019-12-25']
+        if self.is_test:
+            holiday_dates = ['2020-06-06']
+        else:
+            holiday_dates = ['2019-01-01', '2019-02-04', '2019-02-05', '2019-02-06',
+                             '2019-03-01', '2019-05-06', '2019-06-06', '2019-08-15',
+                             '2019-09-12', '2019-09-13', '2019-10-03', '2019-10-09',
+                             '2019-12-25']
         for i in range(0, len(self.train)):
             dt = str(self.train['ymd'].iloc[i])
             dy = self.train['weekdays'].iloc[i]
             if dt in holiday_dates or dy == 'Saturday' or dy == 'Sunday':
                 holidays.append(1)
-            else: holidays.append(0)
+            else:
+                holidays.append(0)
         self.train['holidays'] = holidays
 
     def get_red_days(self):
@@ -95,15 +112,19 @@ class Features:
         :** objective: create a dummy variable for just red
         """
         red = []
-        holiday_dates = ['2019-01-01', '2019-02-04','2019-02-05','2019-02-06',
-                          '2019-03-01','2019-05-06','2019-06-06','2019-08-15',
-                          '2019-09-12','2019-09-13','2019-10-03','2019-10-09',
-                          '2019-12-25']
+        if self.is_test:
+            holiday_dates = ['2020-06-06']
+        else:
+            holiday_dates = ['2019-01-01', '2019-02-04', '2019-02-05', '2019-02-06',
+                             '2019-03-01', '2019-05-06', '2019-06-06', '2019-08-15',
+                             '2019-09-12', '2019-09-13', '2019-10-03', '2019-10-09',
+                             '2019-12-25']
         for i in range(0, len(self.train)):
             dt = str(self.train['ymd'].iloc[i])
             if dt in holiday_dates:
                 red.append(1)
-            else: red.append(0)
+            else:
+                red.append(0)
         self.train['red'] = red
 
     def get_weekends(self):
@@ -111,8 +132,7 @@ class Features:
         :** objective: create a dummy variable for just weekends
         """
         self.train['weekends'] = 0
-        self.train.loc[(self.train['red']==0) & (self.train['holidays']==1),'weekends'] =1
-
+        self.train.loc[(self.train['red'] == 0) & (self.train['holidays'] == 1), 'weekends'] = 1
 
     def get_min_start(self):
         """
@@ -130,7 +150,7 @@ class Features:
                 rtn = 40
             min_start.append(rtn)
         self.train['min_start'] = min_start
-        #list(set(train.방송일시.dt.minute)) #unique
+        # list(set(train.방송일시.dt.minute)) #unique
 
     def filter_jappingt(self):
         """
@@ -142,11 +162,15 @@ class Features:
             if (time.minute < 30) & (time.hour == 0):
                 rtn = time.hour
             elif time.minute >= 30:
-                if time.hour == 23: rtn = 0
-                else: rtn = time.hour + 1
+                if time.hour == 23:
+                    rtn = 0
+                else:
+                    rtn = time.hour + 1
             else:
-                if time.hour == 0: rtn = 23
-                else: rtn = time.hour
+                if time.hour == 0:
+                    rtn = 23
+                else:
+                    rtn = time.hour
             japp.append(rtn)
         self.train['japp'] = japp
 
@@ -155,7 +179,7 @@ class Features:
         :objective: fill out NA values on 'exposed' with mean(exposed)
         :return:pd.Dataframe with adjusted 'exposed' column
         """
-        self.train["exposed"].fillna(self.train.groupby('방송일시')['exposed'].transform('mean'), inplace = True)
+        self.train["exposed"].fillna(self.train.groupby('방송일시')['exposed'].transform('mean'), inplace=True)
 
     def round_exposed(self):
         """
@@ -172,17 +196,17 @@ class Features:
 
     def get_ymd(self):
         """
-        :objective: add 'ymd' variable to train dataset
-        :return: pandas dataframe
+        :objective: add 'ymd' variable to dataset
         """
         t = 1
         while t < 9:
             for i in self.ts_schedule.ymd.unique():
-                if i == datetime.date(2019,1,1): continue
+                if (i == datetime.date(2019, 1, 1)) | (i == datetime.date(2020, 6, 1)): continue
                 time_idx = self.ts_schedule[self.ts_schedule.ymd == i].index[0]
                 first_show = self.ts_schedule.iloc[time_idx]
                 last_show = self.ts_schedule.iloc[time_idx - 1]
-                if (first_show['마더코드'] == last_show['마더코드']) & (first_show['방송일시'] <= last_show['방송일시'] + datetime.timedelta(minutes=last_show['exposed'])):
+                if (first_show['마더코드'] == last_show['마더코드']) & (
+                        first_show['방송일시'] <= last_show['방송일시'] + datetime.timedelta(minutes=last_show['exposed'])):
                     self.ts_schedule.ymd.iloc[time_idx] = self.ts_schedule.ymd.iloc[time_idx - 1]
 
             t = t + 1
@@ -215,12 +239,12 @@ class Features:
         self.ts_schedule['show_counts'] = ""
         for i in self.ts_schedule.ymd.unique():
             rtn = self.ts_schedule[self.ts_schedule.ymd == i]
-            slot_count = 0 #number of shows for each day
-            for j in range(0,len(rtn)):
-                if rtn['parttime'].iloc[j] ==  1:
+            slot_count = 0  # number of shows for each day
+            for j in range(0, len(rtn)):
+                if rtn['parttime'].iloc[j] == 1:
                     slot_count += 1
                     idx = self.ts_schedule[self.ts_schedule.ymd == i].index[j]
-                    self.ts_schedule.show_counts.iloc[idx] = str(i) + " "+ str(slot_count)
+                    self.ts_schedule.show_counts.iloc[idx] = str(i) + " " + str(slot_count)
 
     def get_min_range(self):
         """
@@ -228,7 +252,7 @@ class Features:
         :return: pandas dataframe
         """
         self.ts_schedule['min_range'] = ""
-        for i in range(0,len(self.ts_schedule)):
+        for i in range(0, len(self.ts_schedule)):
             if self.ts_schedule.parttime.iloc[i] == 1:
                 min_dur = self.ts_schedule.exposed.iloc[i]
                 j = i + 1
@@ -250,10 +274,10 @@ class Features:
             show_id = self.ts_schedule.show_counts.iloc[i]
             time_slot = self.ts_schedule.방송일시.iloc[i]
             minrange = self.ts_schedule.min_range.iloc[i]
-            idx = self.train[(self.train.방송일시 >= time_slot) & (self.train.방송일시 < time_slot + datetime.timedelta(minutes=minrange))].index
+            idx = self.train[(self.train.방송일시 >= time_slot) & (
+                        self.train.방송일시 < time_slot + datetime.timedelta(minutes=minrange))].index
             self.train.show_id.iloc[idx] = show_id
             self.train.min_range.iloc[idx] = minrange
-
 
     ############################
     ## primetime
@@ -263,36 +287,35 @@ class Features:
         :**objective: get primetime for week and weekends respectively
         """
         self.train['primetime'] = 0
-        prime_week = [9,10,11]
-        prime_week2 = [16,17,18]
-        prime_weekend = [7,8,9]
-        prime_weekend2 = [13,15,16,17]
+        prime_week = [9, 10, 11]
+        prime_week2 = [16, 17, 18]
+        prime_weekend = [7, 8, 9]
+        prime_weekend2 = [13, 15, 16, 17]
 
-        self.train.loc[(self.train['red']==0) & (self.train['holidays']==1) & (self.train['hours'].isin(prime_weekend)),'primetime'] =1
-        self.train.loc[(self.train['red']==0) & (self.train['holidays']==1) & (self.train['hours'].isin(prime_weekend2)),'primetime'] = 2
+        self.train.loc[(self.train['red'] == 0) & (self.train['holidays'] == 1) & (
+            self.train['hours'].isin(prime_weekend)), 'primetime'] = 1
+        self.train.loc[(self.train['red'] == 0) & (self.train['holidays'] == 1) & (
+            self.train['hours'].isin(prime_weekend2)), 'primetime'] = 2
 
-        self.train.loc[(self.train['holidays']==0) & (self.train['hours'].isin(prime_week)),'primetime'] = 1
-        self.train.loc[(self.train['holidays']==0) & (self.train['hours'].isin(prime_week2)),'primetime'] = 2
-
-    def check_originalc_primet(self):
-        """
-        :objective: return 1 if its hour is within its original c's primetime
-        """
-        self.train['prime_origin'] = 0
-        hours_originalc = self.train.groupby(['hours', 'original_c']) \
-            ['취급액'].sum().rename("tot_sales").groupby(level=0, group_keys=False)
-        hours_originalc_list = hours_originalc.nlargest(2)
-        for hr, original_c_nm in hours_originalc_list.index:
-            self.train.prime_origin.loc[(self.train.hours == hr) & (self.train.original_c == original_c_nm)] = 1
+        self.train.loc[(self.train['holidays'] == 0) & (self.train['hours'].isin(prime_week)), 'primetime'] = 1
+        self.train.loc[(self.train['holidays'] == 0) & (self.train['hours'].isin(prime_week2)), 'primetime'] = 2
 
     def check_smallc_primet(self):
         """
         :objective: return 1 if its hour is within its small c's primetime
         """
+        if not self.is_test:
+            hours_smallc = self.train.groupby(['hours', 'small_c']) \
+                ['취급액'].sum().rename("tot_sales").groupby(level=0, group_keys=False)
+            hours_smallc_list = hours_smallc.nlargest(2)
+            try:
+                pd.DataFrame(hours_smallc_list).to_pickle("../data/12/small_c_primet.pkl")
+            except:
+                print("fail to write pickle")
+        else:
+            hours_smallc_list = pd.read_pickle("../data/12/small_c_primet.pkl")
+
         self.train['prime_smallc'] = 0
-        hours_smallc = self.train.groupby(['hours', 'small_c']) \
-            ['취급액'].sum().rename("tot_sales").groupby(level=0, group_keys=False)
-        hours_smallc_list = hours_smallc.nlargest(2)
         for hr, small_c_nm in hours_smallc_list.index:
             self.train.prime_smallc.loc[(self.train.hours == hr) & (self.train.small_c == small_c_nm)] = 1
 
@@ -302,18 +325,27 @@ class Features:
     def get_sales_power(self):
         """
         :objective: get sales power of each product, sum(exposed time)/sum(sales volume)
+                    will not be included in the final input
         """
-        self.train['sales_power'] = 0
-        bp = self.train.groupby('상품코드').exposed.sum()/self.train.groupby('상품코드').volume.sum()
-        for i in bp.index:
-            self.train.sales_power.loc[self.train.상품코드 == i] = bp.loc[i]
+        if not self.is_test:
+            self.train['sales_power'] = 0
+            bp = self.train.groupby('상품코드').exposed.sum() / self.train.groupby('상품코드').volume.sum()
+            for i in bp.index:
+                self.train.sales_power.loc[self.train.상품코드 == i] = bp.loc[i]
 
     def freq_items(self):
         """
         :objective: identify frequently sold items by dummy variable "freq"
         """
-        # define top ten frequently sold items list
-        freq_list = self.train.groupby('상품코드').show_id.nunique().sort_values(ascending=False).index[1:10]
+        if not self.is_test:
+            # define top ten frequently sold items list
+            freq_list = self.train.groupby('상품코드').show_id.nunique().sort_values(ascending=False).index[1:10]
+            try:
+                pd.DataFrame(freq_list).to_pickle("../data/12/freq_list.pkl")
+            except:
+                print("fail to write pickle")
+        else:
+            freq_list = pd.read_pickle("../data/12/freq_list.pkl")
         self.train['freq'] = 0
         self.train.freq.loc[self.train.상품코드.isin(freq_list)] = 1
 
@@ -321,8 +353,17 @@ class Features:
         """
         :objective: check if it is included in top 40(by total sales)
         """
-        steady_list = self.train.groupby('상품코드') \
-                          .apply(lambda x: sum(x.취급액) / x.show_id.nunique()).sort_values(ascending=False).index[1:40]
+        if not self.is_test:
+            # define top ten steady items list
+            steady_list = self.train.groupby('상품코드') \
+                              .apply(lambda x: sum(x.취급액) / x.show_id.nunique()).sort_values(ascending=False).index[
+                          1:40]
+            try:
+                pd.DataFrame(steady_list).to_pickle("../data/12/steady_list.pkl")
+            except:
+                print("fail to write pickle")
+        else:
+            steady_list = pd.read_pickle("../data/12/steady_list.pkl")
         self.train['steady'] = 0
         self.train.steady.loc[self.train.상품코드.isin(steady_list)] = 1
 
@@ -330,8 +371,16 @@ class Features:
         """
         :objective: identify items with low sales power(+) & high price
         """
-        bpower_list = self.train.마더코드.loc[(self.train.sales_power > self.train.sales_power.quantile(0.7)) &
-                                     (self.train.판매단가 > self.train.판매단가.quantile(0.7))].unique()
+        if not self.is_test:
+            # define top ten bpower items list
+            bpower_list = self.train.마더코드.loc[(self.train.sales_power > self.train.sales_power.quantile(0.7)) &
+                                              (self.train.판매단가 > self.train.판매단가.quantile(0.7))].unique()
+            try:
+                pd.DataFrame(bpower_list).to_pickle("../data/12/bpower_list.pkl")
+            except:
+                print("fail to write pickle")
+        else:
+            bpower_list = pd.read_pickle("../data/12/bpower_list.pkl")
         self.train['bpower'] = 0
         self.train.bpower.loc[self.train.마더코드.isin(bpower_list)] = 1
 
@@ -351,20 +400,20 @@ class Features:
         :**objective: create a dummy variable to identify products with selling price >= 490,000
         """
         self.train['luxury'] = 0
-        self.train.loc[self.train['판매단가']>=490000, 'luxury'] = 1
+        self.train.loc[self.train['판매단가'] >= 490000, 'luxury'] = 1
 
     def check_pay(self):
         """
         :**objective: create 3 factor variable to identify payment methods ('ilsibul','muiza','none')
         """
         pay = []
-        for i in range(0,len(self.train)) :
+        for i in range(0, len(self.train)):
             word = self.train['상품명'].iloc[i]
-            if '(일)' in word or '일시불' in word :
+            if '(일)' in word or '일시불' in word:
                 pay.append('ilsibul')
-            elif '(무)' in word or '무이자' in word :
+            elif '(무)' in word or '무이자' in word:
                 pay.append('muiza')
-            else :
+            else:
                 pay.append('none')
         self.train['pay'] = pay
 
@@ -401,20 +450,21 @@ class Features:
         weeknums = self.train['week_num'].unique()
         for num in weeknums:
             curr_wk = num
-            prev_wk = curr_wk-1
+            prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if prev_wk == 0:
+            if (prev_wk == 0)|(self.is_test&(prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
-            groups = train_subset[['상품코드','판매단가']].groupby(by = '상품코드')
-            grp = groups.agg({'판매단가':'mean'}).reset_index()
+            groups = train_subset[['상품코드', '판매단가']].groupby(by='상품코드')
+            grp = groups.agg({'판매단가': 'mean'}).reset_index()
             grp['week_num'] = curr_wk
-            grp = grp.rename(columns = {'판매단가':'lag_scode_price_temp'})
-            result = pd.merge(left = grp,  right = self.train, on = ['week_num','상품코드'],how='right')
-            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)
+            grp = grp.rename(columns={'판매단가': 'lag_scode_price_temp'})
+            result = pd.merge(left=grp, right=self.train, on=['week_num', '상품코드'], how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
             result = result.reset_index()
             # merge
-            self.train.loc[self.train['week_num']==curr_wk,'lag_scode_price'] = result.loc[result.week_num==curr_wk,'lag_scode_price_temp']
+            self.train.loc[self.train['week_num'] == curr_wk, 'lag_scode_price'] = result.loc[
+                result.week_num == curr_wk, 'lag_scode_price_temp']
 
     def get_lag_scode_count(self):
         """
@@ -424,19 +474,20 @@ class Features:
         weeknums = self.train['week_num'].unique()
         for num in weeknums:
             curr_wk = num
-            prev_wk = curr_wk-1
+            prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if prev_wk == 0:
+            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
-            grp = train_subset.groupby(by = '상품코드').apply(lambda x: x.show_id.nunique())
-            grp = grp.to_frame(name = 'lag_scode_count_temp')
+            grp = train_subset.groupby(by='상품코드').apply(lambda x: x.show_id.nunique())
+            grp = grp.to_frame(name='lag_scode_count_temp')
             grp['week_num'] = curr_wk
-            result = pd.merge(left = grp,  right = self.train, on = ['week_num','상품코드'],how='right')
-            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)
+            result = pd.merge(left=grp, right=self.train, on=['week_num', '상품코드'], how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
             result = result.reset_index()
             # merge
-            self.train.loc[self.train['week_num']==curr_wk,'lag_scode_count'] = result.loc[result.week_num==curr_wk,'lag_scode_count_temp']
+            self.train.loc[self.train['week_num'] == curr_wk, 'lag_scode_count'] = \
+                result.loc[result.week_num == curr_wk, 'lag_scode_count_temp']
 
     def get_lag_mcode_price(self):
         """
@@ -446,20 +497,21 @@ class Features:
         weeknums = self.train['week_num'].unique()
         for num in weeknums:
             curr_wk = num
-            prev_wk = curr_wk-1
+            prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if prev_wk == 0:
+            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
-            groups = train_subset[['마더코드','판매단가']].groupby(by = '마더코드')
-            grp = groups.agg({'판매단가':'mean'}).reset_index()
+            groups = train_subset[['마더코드', '판매단가']].groupby(by='마더코드')
+            grp = groups.agg({'판매단가': 'mean'}).reset_index()
             grp['week_num'] = curr_wk
-            grp = grp.rename(columns = {'판매단가':'lag_mcode_price_temp'})
-            result = pd.merge(left = grp,  right = self.train, on = ['week_num','마더코드'],how='right')
-            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)
+            grp = grp.rename(columns={'판매단가': 'lag_mcode_price_temp'})
+            result = pd.merge(left=grp, right=self.train, on=['week_num', '마더코드'], how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
             result = result.reset_index()
             # merge
-            self.train.loc[self.train['week_num']==curr_wk,'lag_mcode_price'] = result.loc[result.week_num==curr_wk,'lag_mcode_price_temp']
+            self.train.loc[self.train['week_num'] == curr_wk, 'lag_mcode_price'] = result.loc[
+                result.week_num == curr_wk, 'lag_mcode_price_temp']
 
     def get_lag_mcode_count(self):
         """
@@ -469,19 +521,20 @@ class Features:
         weeknums = self.train['week_num'].unique()
         for num in weeknums:
             curr_wk = num
-            prev_wk = curr_wk-1
+            prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if prev_wk == 0:
+            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
-            grp = train_subset.groupby(by = '마더코드').apply(lambda x: x.show_id.nunique())
-            grp = grp.to_frame(name = 'lag_mcode_count_temp')
+            grp = train_subset.groupby(by='마더코드').apply(lambda x: x.show_id.nunique())
+            grp = grp.to_frame(name='lag_mcode_count_temp')
             grp['week_num'] = curr_wk
-            result = pd.merge(left = grp,  right = self.train, on = ['week_num','마더코드'],how='right')
-            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)
+            result = pd.merge(left=grp, right=self.train, on=['week_num', '마더코드'], how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
             result = result.reset_index()
             # merge
-            self.train.loc[self.train['week_num']==curr_wk,'lag_mcode_count'] = result.loc[result.week_num==curr_wk,'lag_mcode_count_temp']
+            self.train.loc[self.train['week_num'] == curr_wk, 'lag_mcode_count'] = result.loc[
+                result.week_num == curr_wk, 'lag_mcode_count_temp']
 
     def get_lag_bigcat_price(self):
         """
@@ -491,20 +544,21 @@ class Features:
         weeknums = self.train['week_num'].unique()
         for num in weeknums:
             curr_wk = num
-            prev_wk = curr_wk-1
+            prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if prev_wk == 0:
+            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
-            groups = train_subset[['상품군','판매단가']].groupby(by = '상품군')
-            grp = groups.agg({'판매단가':'mean'}).reset_index()
+            groups = train_subset[['상품군', '판매단가']].groupby(by='상품군')
+            grp = groups.agg({'판매단가': 'mean'}).reset_index()
             grp['week_num'] = curr_wk
-            grp = grp.rename(columns = {'판매단가':'lag_bigcat_price_temp'})
-            result = pd.merge(left = grp,  right = self.train, on = ['week_num','상품군'],how='right')
-            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            grp = grp.rename(columns={'판매단가': 'lag_bigcat_price_temp'})
+            result = pd.merge(left=grp, right=self.train, on=['week_num', '상품군'], how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)  ##
             result = result.reset_index()
             # merge
-            self.train.loc[self.train['week_num']==curr_wk,'lag_bigcat_price'] = result.loc[result.week_num==curr_wk,'lag_bigcat_price_temp']
+            self.train.loc[self.train['week_num'] == curr_wk, 'lag_bigcat_price'] = result.loc[
+                result.week_num == curr_wk, 'lag_bigcat_price_temp']
 
     def get_lag_bigcat_count(self):
         """
@@ -514,19 +568,20 @@ class Features:
         weeknums = self.train['week_num'].unique()
         for num in weeknums:
             curr_wk = num
-            prev_wk = curr_wk-1
+            prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if prev_wk == 0:
+            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
-            grp = train_subset.groupby(by = '상품군').apply(lambda x: x.show_id.nunique())
-            grp = grp.to_frame(name = 'lag_bigcat_count_temp')
+            grp = train_subset.groupby(by='상품군').apply(lambda x: x.show_id.nunique())
+            grp = grp.to_frame(name='lag_bigcat_count_temp')
             grp['week_num'] = curr_wk
-            result = pd.merge(left = grp,  right = self.train, on = ['week_num','상품군'],how='right')
-            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            result = pd.merge(left=grp, right=self.train, on=['week_num', '상품군'], how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)  ##
             result = result.reset_index()
             # merge
-            self.train.loc[self.train['week_num']==curr_wk,'lag_bigcat_count'] = result.loc[result.week_num==curr_wk,'lag_bigcat_count_temp']
+            self.train.loc[self.train['week_num'] == curr_wk, 'lag_bigcat_count'] = result.loc[
+                result.week_num == curr_wk, 'lag_bigcat_count_temp']
 
     def get_lag_bigcat_price_day(self):
         """
@@ -534,22 +589,23 @@ class Features:
         """
         self.train['lag_bigcat_price_day'] = 0
         daynums = self.train['ymd'].unique()
-        for i in range(0,len(daynums)):
+        for i in range(0, len(daynums)):
             if i == 0:
                 continue
             curr_wk = daynums[i]
-            prev_wk = daynums[i-1]
+            prev_wk = daynums[i - 1]
             prev_wk_selector = (self.train['ymd'] == prev_wk)
             train_subset = self.train[prev_wk_selector]
-            groups = train_subset[['상품군','판매단가']].groupby(by = '상품군')
-            grp = groups.agg({'판매단가':'mean'}).reset_index()
+            groups = train_subset[['상품군', '판매단가']].groupby(by='상품군')
+            grp = groups.agg({'판매단가': 'mean'}).reset_index()
             grp['ymd'] = curr_wk
-            grp = grp.rename(columns = {'판매단가':'lag_bigcat_price_day_temp'})
-            result = pd.merge(left = grp, right = self.train, on = ['ymd','상품군'],how='right')
-            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            grp = grp.rename(columns={'판매단가': 'lag_bigcat_price_day_temp'})
+            result = pd.merge(left=grp, right=self.train, on=['ymd', '상품군'], how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)  ##
             result = result.reset_index()
             # merge
-            self.train.loc[self.train['ymd']==curr_wk,'lag_bigcat_price_day'] = result.loc[result.ymd==curr_wk,'lag_bigcat_price_day_temp']
+            self.train.loc[self.train['ymd'] == curr_wk, 'lag_bigcat_price_day'] = result.loc[
+                result.ymd == curr_wk, 'lag_bigcat_price_day_temp']
 
     def get_lag_bigcat_count_day(self):
         """
@@ -557,21 +613,22 @@ class Features:
         """
         self.train['lag_bigcat_count_day'] = 0
         daynums = self.train['ymd'].unique()
-        for i in range(0,len(daynums)):
+        for i in range(0, len(daynums)):
             if i == 0:
                 continue
             curr_wk = daynums[i]
-            prev_wk = daynums[i-1]
+            prev_wk = daynums[i - 1]
             prev_wk_selector = (self.train['ymd'] == prev_wk)
             train_subset = self.train[prev_wk_selector]
-            grp = train_subset.groupby(by = '상품군').apply(lambda x: x.show_id.nunique())
-            grp = grp.to_frame(name = 'lag_bigcat_count_day_temp')
+            grp = train_subset.groupby(by='상품군').apply(lambda x: x.show_id.nunique())
+            grp = grp.to_frame(name='lag_bigcat_count_day_temp')
             grp['ymd'] = curr_wk
-            result = pd.merge(left = grp,  right = self.train, on = ['ymd','상품군'],how='right')
-            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            result = pd.merge(left=grp, right=self.train, on=['ymd', '상품군'], how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)  ##
             result = result.reset_index()
             # merge
-            self.train.loc[self.train['ymd']==curr_wk,'lag_bigcat_count_day'] = result.loc[result.ymd==curr_wk,'lag_bigcat_count_day_temp']
+            self.train.loc[self.train['ymd'] == curr_wk, 'lag_bigcat_count_day'] = result.loc[
+                result.ymd == curr_wk, 'lag_bigcat_count_day_temp']
 
     def get_lag_small_c_price(self):
         """
@@ -581,20 +638,21 @@ class Features:
         weeknums = self.train['week_num'].unique()
         for num in weeknums:
             curr_wk = num
-            prev_wk = curr_wk-1
+            prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if prev_wk == 0:
+            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
-            groups = train_subset[['small_c','판매단가']].groupby(by = 'small_c')
-            grp = groups.agg({'판매단가':'mean'}).reset_index()
+            groups = train_subset[['small_c', '판매단가']].groupby(by='small_c')
+            grp = groups.agg({'판매단가': 'mean'}).reset_index()
             grp['week_num'] = curr_wk
-            grp = grp.rename(columns = {'판매단가':'lag_small_c_price_temp'})
-            result = pd.merge(left = grp,  right = self.train, on = ['week_num','small_c'],how='right')
-            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            grp = grp.rename(columns={'판매단가': 'lag_small_c_price_temp'})
+            result = pd.merge(left=grp, right=self.train, on=['week_num', 'small_c'], how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)  ##
             result = result.reset_index()
             # merge
-            self.train.loc[self.train['week_num']==curr_wk,'lag_small_c_price'] = result.loc[result.week_num==curr_wk,'lag_small_c_price_temp']
+            self.train.loc[self.train['week_num'] == curr_wk, 'lag_small_c_price'] = result.loc[
+                result.week_num == curr_wk, 'lag_small_c_price_temp']
 
     def get_lag_small_c_count(self):
         """
@@ -604,47 +662,133 @@ class Features:
         weeknums = self.train['week_num'].unique()
         for num in weeknums:
             curr_wk = num
-            prev_wk = curr_wk-1
+            prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if prev_wk == 0:
+            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
-            grp = train_subset.groupby(by = 'small_c').apply(lambda x: x.show_id.nunique())
-            grp = grp.to_frame(name = 'lag_small_c_count_temp')
+            grp = train_subset.groupby(by='small_c').apply(lambda x: x.show_id.nunique())
+            grp = grp.to_frame(name='lag_small_c_count_temp')
             grp['week_num'] = curr_wk
-            result = pd.merge(left = grp,  right = self.train, on = ['week_num','small_c'],how='right')
-            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace = True)##
+            result = pd.merge(left=grp, right=self.train, on=['week_num', 'small_c'], how='right')
+            result.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)  ##
             result = result.reset_index()
             # merge
-            self.train.loc[self.train['week_num']==curr_wk,'lag_small_c_count'] = result.loc[result.week_num==curr_wk,'lag_small_c_count_temp']
+            self.train.loc[self.train['week_num'] == curr_wk, 'lag_small_c_count'] = result.loc[
+                result.week_num == curr_wk, 'lag_small_c_count_temp']
 
     def get_lag_all_price_show(self):
+        """
+        :**objective: get previous week small_c mean price
+        """
         self.train['lag_all_price_show'] = 0
         daynums = self.train['show_id'].unique()
-        for i in range(0,len(daynums)):
+        for i in range(0, len(daynums)):
             if i == 0:
                 continue
             curr_wk = daynums[i]
-            prev_wk = daynums[i-1]
+            prev_wk = daynums[i - 1]
             prev_wk_selector = (self.train['show_id'] == prev_wk)
             train_subset = self.train[prev_wk_selector]
             mean_price = train_subset.판매단가.mean()
             # merge
-            self.train.loc[self.train['show_id']==curr_wk,'lag_all_price_show'] = mean_price
+            self.train.loc[self.train['show_id'] == curr_wk, 'lag_all_price_show'] = mean_price
 
     def get_lag_all_price_day(self):
+        """
+        :**objective: get previous day small_c mean price
+        """
         self.train['lag_all_price_day'] = 0
         daynums = self.train['show_id'].unique()
-        for i in range(0,len(daynums)):
+        for i in range(0, len(daynums)):
             if i == 0:
                 continue
             curr_wk = daynums[i]
-            prev_wk = daynums[i-1]
+            prev_wk = daynums[i - 1]
             prev_wk_selector = (self.train['show_id'] == prev_wk)
             train_subset = self.train[prev_wk_selector]
             mean_price = train_subset.판매단가.mean()
             # merge
-            self.train.loc[self.train['show_id']==curr_wk,'lag_all_price_day'] = mean_price
+            self.train.loc[self.train['show_id'] == curr_wk, 'lag_all_price_day'] = mean_price
+
+    def get_lag_sales(self):
+        """
+        :objective: get sales lag 1,2 for weekend cases and lag 1 to 5 for weekday cases; pointwisely
+        :return: pd.DataFrame - including lag_sales_wk_i (i = 1,2), lag_sales_wd_i (i = 1,2,3,4,5)
+        """
+        # stack 2019-may data to get lag vars if self.is_test = True
+        if self.is_test:
+            full_train = pd.read_pickle("../data/20/train_v2.pkl")
+            # extract only 2019-may data
+            train_may = full_train.loc[(full_train.ymd > datetime.date(2019, 5, 25)) & (full_train.months == 5)]
+            # extract only columns existing in test dataset
+            col = self.train.columns
+            # stack 2019-may data
+            self.train = pd.concat([train_may.loc[:, col], self.train], join='outer', sort=False)
+
+        df_wk = self.train[self.train.weekends == 1]  # weekend case
+        for i in range(1, 3): # lags for 1,2 diff
+            temp_df = df_wk[['ymd', 'hours', '취급액']]
+            temp_df = pd.DataFrame(temp_df.groupby(['ymd', 'hours'])['취급액'].sum())
+            temp_df = pd.DataFrame(temp_df.groupby(level=1)['취급액'].shift(i))
+            df_wk = pd.merge(right=temp_df, left=df_wk, on=['ymd', 'hours'], how='left')
+            df_wk = df_wk.rename(columns={'취급액_x': '취급액', '취급액_y': 'lag_sales_wk_' + str(i)})
+
+        df_wd = self.train[self.train.weekends == 0]  # weekday case
+        for i in range(1, 6): # lags for 1,5 day diff
+            temp_df = df_wd[['ymd', 'hours', '취급액']]
+            temp_df = pd.DataFrame(temp_df.groupby(['ymd', 'hours'])['취급액'].sum())
+            temp_df = pd.DataFrame(temp_df.groupby(level=1)['취급액'].shift(i))
+            df_wd = pd.merge(right=temp_df, left=df_wd, on=['ymd', 'hours'], how='left')
+            df_wd = df_wd.rename(columns={'취급액_x': '취급액', '취급액_y': 'lag_sales_wd_' + str(i)})
+
+        self.train = pd.concat([df_wd, df_wk], join='outer', sort=False)
+        # drop 2019 may data
+        if self.is_test:
+            self.train = self.train.loc[self.train.방송일시.dt.month != 5]
+
+    def get_rolling_means(self):
+        """
+        :objective: compute rolling means by 상품군 for 7/14 days
+        :param: df - pd.DataFrame
+        :return: pd.DataFrme - including rolling_mean_i (i=7,14)
+        """
+        # stack 2019-may data to get lag vars if self.is_test = True
+        if self.is_test:
+            full_train = pd.read_pickle("../data/20/train_v2.pkl")
+            # extract only 2019-may data
+            train_may = full_train.loc[(full_train.ymd > datetime.date(2019, 5, 15)) & (full_train.months == 5)]
+            train_may.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+            # change year as 2020 may
+            train_may.방송일시 = train_may.방송일시 + np.timedelta64(366, 'D')
+            train_may.ymd = train_may.ymd.apply(lambda x: (np.datetime64(x) + pd.Timedelta(366, unit='D')).date())
+            # extract only columns existing in test dataset
+            col = self.train.columns
+            # stack 2019-may data
+            self.train = pd.concat([train_may.loc[:, col], self.train], join='outer', sort=False)
+
+        for i in [7, 14]:
+            self.train['rolling_mean_' + str(i)] = 0
+            for time_slot in self.train.ymd.unique():
+                time_slot = pd.to_datetime(time_slot)
+                for category in self.train.상품군.unique():
+                     self.train['rolling_mean_' + str(i)].loc[(self.train.ymd == time_slot) & (self.train.상품군 == category)] =\
+                                    self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
+                                    (self.train.방송일시 < time_slot) & (self.train.상품군 == category)].취급액.mean()
+        # drop 2019 may data
+        if self.is_test:
+            self.train = self.train.loc[self.train.방송일시.dt.month != 5]
+
+
+    def get_ts_pred(self, type='Prophet'):
+        """
+        :objective: get sales estimation using time-series model
+        :param type: str - 'Prophet'
+        """
+        if type == 'Prophet':
+            ts_pred = pd.read_pickle("../data/12/prophet_pred.pkl")
+        pd.merge(left=self.train, right=ts_pred[['ymd', 'hours', 'ts_pred']], on=['ymd', 'hours'], sort=False,
+                 how='left')
 
     ############################
     ## External information
@@ -654,14 +798,20 @@ class Features:
         :objective: add category columns
         :return: pandas dataframe
         """
-        categories = pd.read_excel("../data/01/2019sales_added.xlsx")
+        if self.is_test:
+            categories = pd.read_excel("../data/01/2020sales_test_added.xlsx")
+        else:
+            categories = pd.read_excel("../data/01/2019sales_added.xlsx")
+            categories.rename(columns={' 취급액 ': '취급액'}, inplace=True)
         categories.상품코드 = categories.상품코드.dropna().astype(int).astype(str).str.zfill(6)
         categories.방송일시 = pd.to_datetime(categories.방송일시, format="%Y/%m/%d %H:%M")
         categories.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
-        categories.rename(columns={' 취급액 ': '취급액'}, inplace=True)
+
         self.train = pd.merge(left=self.train,
-                          right=categories[['방송일시', '상품코드', 'brand', 'original_c', 'small_c', 'small_c_code','middle_c','middle_c_code','big_c','big_c_code']],
-                          how='inner', on=['방송일시', '상품코드'], sort=False)
+                              right=categories[
+                                  ['방송일시', '상품코드', 'small_c', 'small_c_code', 'middle_c', 'middle_c_code', 'big_c',
+                                   'big_c_code']],
+                              how='inner', on=['방송일시', '상품코드'], sort=False)
 
     def add_vratings(self):
         """
@@ -669,23 +819,23 @@ class Features:
         """
         onair = pd.read_csv("../data/11/vrating_defined.csv")
         onair.상품코드 = onair.상품코드.dropna().astype(int).astype(str).str.zfill(6)
-        onair['schedule'] = onair[['DATE','TIME']].agg(' '.join, axis=1) ##schedule = 방송일
+        onair['schedule'] = onair[['DATE', 'TIME']].agg(' '.join, axis=1)  ##schedule = 방송일
         onair['schedule'] = pd.to_datetime(onair.schedule, format="%Y/%m/%d %H:%M")
         onair.sort_values(['schedule', '상품코드'], ascending=[True, True], inplace=True)
 
-        #impute rate mean nan
+        # impute rate mean nan
         random.seed(100)
-        for i in range(0,len(self.train)):
-            if math.isnan(onair.iloc[i,1]):
-                onair['rate_mean'].iloc[i] = onair['rate_mean'].iloc[i-1]
+        for i in range(0, len(self.train)):
+            if math.isnan(onair.iloc[i, 1]):
+                onair['rate_mean'].iloc[i] = onair['rate_mean'].iloc[i - 1]
             else:
                 continue
 
         # add noise to zero values
-        for i in range(0,len(onair)):
+        for i in range(0, len(onair)):
             val = onair['rate_mean'].iloc[i]
-            if val == 0 :
-                onair['rate_mean'].iloc[i] = np.random.uniform(0,1,1)[0]/1000000
+            if val == 0:
+                onair['rate_mean'].iloc[i] = np.random.uniform(0, 1, 1)[0] / 1000000
             else:
                 continue
         rate_mean = onair['rate_mean']
@@ -695,16 +845,20 @@ class Features:
         """
         :objective: create dummy vars(spring,summer,fall,winter) for seasonal items
         """
-        with open("../data/11/seasonal.json", encoding='UTF8') as json_file:
-            seasonal_items = json.load(json_file)
+        if self.is_test:
+            with open("../data/11/seasonal_test.json", encoding='UTF8') as json_file:
+                seasonal_items = json.load(json_file)
+        else:
+            with open("../data/11/seasonal.json", encoding='UTF8') as json_file:
+                seasonal_items = json.load(json_file)
         self.train['spring'] = 0
         self.train['summer'] = 0
         self.train['fall'] = 0
         self.train['winter'] = 0
-        self.train.spring.loc[self.train['original_c'].isin(seasonal_items['spring'])] = 1
-        self.train.summer.loc[self.train['original_c'].isin(seasonal_items['summer'])] = 1
-        self.train.fall.loc[self.train['original_c'].isin(seasonal_items['fall'])] = 1
-        self.train.winter.loc[self.train['original_c'].isin(seasonal_items['winter'])] = 1
+        self.train.spring.loc[self.train['small_c'].isin(seasonal_items['spring'])] = 1
+        self.train.summer.loc[self.train['small_c'].isin(seasonal_items['summer'])] = 1
+        self.train.fall.loc[self.train['small_c'].isin(seasonal_items['fall'])] = 1
+        self.train.winter.loc[self.train['small_c'].isin(seasonal_items['winter'])] = 1
 
     def add_small_c_clickr(self):
         """
@@ -713,8 +867,8 @@ class Features:
         smallc_comb = pd.read_excel("../data/11/small_comb.xlsx")
         smallc_comb['ymd'] = pd.to_datetime(smallc_comb.date.astype(str)).dt.date
         self.train = pd.merge(left=self.train,
-                         right=smallc_comb[['small_c_code', 'ymd', 'small_click_r']],
-                         how='inner', on=['small_c_code', 'ymd'], sort=False)
+                              right=smallc_comb[['small_c_code', 'ymd', 'small_click_r']],
+                              how='inner', on=['small_c_code', 'ymd'], sort=False)
 
     def add_mid_c_clickr(self):
         """
@@ -724,8 +878,8 @@ class Features:
         midc_comb['ymd'] = pd.to_datetime(midc_comb.date.astype(str)).dt.date
         midc_comb['middle_c_code'] = midc_comb['mid_c_code']
         self.train = pd.merge(left=self.train,
-                         right=midc_comb[['middle_c_code', 'ymd', 'mid_click_r']],
-                         how='inner', on=['middle_c_code', 'ymd'], sort=False)
+                              right=midc_comb[['middle_c_code', 'ymd', 'mid_click_r']],
+                              how='inner', on=['middle_c_code', 'ymd'], sort=False)
 
     def add_big_c_clickr(self):
         """
@@ -734,8 +888,8 @@ class Features:
         bigc_comb = pd.read_excel("../data/11/big_comb.xlsx")
         bigc_comb['ymd'] = pd.to_datetime(bigc_comb.date.astype(str)).dt.date
         self.train = pd.merge(left=self.train,
-                         right=bigc_comb[['big_c_code', 'ymd', 'big_click_r']],
-                         how='inner', on=['big_c_code', 'ymd'], sort=False)
+                              right=bigc_comb[['big_c_code', 'ymd', 'big_click_r']],
+                              how='inner', on=['big_c_code', 'ymd'], sort=False)
 
     def add_age_click_ratio(self):
         """
@@ -745,15 +899,15 @@ class Features:
         age_click = pd.read_excel("../data/11/age_click.xlsx")
         age_click['ymd'] = pd.to_datetime(age_click.date.astype(str)).dt.date
         self.train = pd.merge(left=self.train,
-                         right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
-                         how='inner', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+                              right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
+                              how='inner', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
         self.train = pd.merge(left=self.train,
-                         right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
-                         how='inner', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
-                         suffixes=['_small', '_middle'])
+                              right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
+                              how='inner', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
+                              suffixes=['_small', '_middle'])
         self.train = pd.merge(left=self.train,
-                         right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
-                         how='inner', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+                              right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
+                              how='inner', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
         self.train.drop(['cat_code', 'cat_code_small', 'cat_code_middle'], axis=1, inplace=True)
         self.train = self.train.rename(
             columns={'age30': 'age30_big', 'age40': 'age40_big', 'age50': 'age50_big', 'age60above': 'age60above_big'})
@@ -766,15 +920,15 @@ class Features:
         device_click = pd.read_excel("../data/11/dev_click.xlsx")
         device_click['ymd'] = pd.to_datetime(device_click.date.astype(str)).dt.date
         self.train = pd.merge(left=self.train,
-                         right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
-                         how='inner', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+                              right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
+                              how='inner', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
         self.train = pd.merge(left=self.train,
-                         right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
-                         how='inner', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
-                         suffixes=['_small', '_middle'])
+                              right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
+                              how='inner', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
+                              suffixes=['_small', '_middle'])
         self.train = pd.merge(left=self.train,
-                         right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
-                         how='inner', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+                              right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
+                              how='inner', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
         self.train.drop(['cat_code', 'cat_code_small', 'cat_code_middle'], axis=1, inplace=True)
         self.train = self.train.rename(columns={'pc': 'pc_big', 'mobile': 'mobile_big'})
 
@@ -782,11 +936,16 @@ class Features:
         """
         :objective: get weather(rain, temp_diff info)
         """
-        weather = pd.read_excel("../data/11/weather_diff.xlsx")
+        if self.is_test:
+            weather = pd.read_excel("../data/11/weather_diff_test.xlsx")
+            weather.ymd = pd.to_datetime(weather.ymd, format="%Y-%m-%d")
+        else:
+            weather = pd.read_excel("../data/11/weather_diff.xlsx")
+
         weather.ymd = weather.ymd.dt.date
         self.train = pd.merge(left=self.train,
-                         right=weather[['ymd', 'rain', 'temp_diff_s']],
-                         how='left', on=['ymd'], sort=False)
+                              right=weather[['ymd', 'rain', 'temp_diff_s']],
+                              how='left', on=['ymd'], sort=False)
         self.train.rain.loc[self.train.rain.isna()] = weather.rain.loc[len(weather) - 1]
         self.train.temp_diff_s.loc[self.train.temp_diff_s.isna()] = weather.temp_diff_s.loc[len(weather) - 1]
 
@@ -796,18 +955,23 @@ class Features:
 
     def drop_na(self):
         """
-        :objective: drop na rows and 취급액 == 50000
+        :objective: drop na rows and 취급액 == 50000(train)
+                    drop rows with 판매단가 == 0(test)
         """
-        self.train = self.train[self.train['취급액'].notna()]
-        self.train = self.train[self.train['취급액']!= 50000]
+        if self.is_test:
+            self.train = self.train[self.train['판매단가'] != 0]
+        else:
+            self.train = self.train[self.train['취급액'].notna()]
+            self.train = self.train[self.train['취급액'] != 50000]
 
     def price_to_rate(self):
         """
-        :objective: drop na rows and 취급액 == 50000
+        :objective: get ratio of lag price to current selling price
         """
-        lag_price_col = ['lag_mcode_price','lag_bigcat_price','lag_small_c_price','lag_bigcat_price_day','lag_all_price_show','lag_all_price_day']
+        lag_price_col = ['lag_mcode_price', 'lag_bigcat_price', 'lag_small_c_price', 'lag_bigcat_price_day',
+                         'lag_all_price_show', 'lag_all_price_day']
         for col in lag_price_col:
-            self.train[col] = self.train[col]/self.train['판매단가']
+            self.train[col] = self.train[col] / self.train['판매단가']
 
     def run_all(self):
 
@@ -832,7 +996,6 @@ class Features:
         self.add_categories()
 
         self.get_primetime()
-        self.check_originalc_primet()
         self.check_smallc_primet()
 
         self.get_sales_power()
@@ -840,7 +1003,7 @@ class Features:
         self.get_dup_times()
         self.get_dup_times_smallc()
 
-        #self.get_lag_scode_price()
+        # self.get_lag_scode_price()
         self.get_lag_scode_count()
         self.get_lag_mcode_price()
         self.get_lag_mcode_count()
@@ -859,7 +1022,7 @@ class Features:
         self.check_luxury_items()
         self.check_pay()
 
-        self.add_vratings()
+        # self.add_vratings()
         self.get_season_items()
         self.add_small_c_clickr()
         self.add_mid_c_clickr()
@@ -870,11 +1033,18 @@ class Features:
         self.round_exposed()
         self.add_age_click_ratio()
         self.add_device_click_ratio()
+        self.get_rolling_means()
+        self.get_lag_sales()
+        self.get_ts_pred()
 
         return self.train
 
 
-
-#t = Features()
-#train = t.run_all()
-#train.to_excel("../data/01/2019sales_v2.xlsx")
+# t = Features()
+# train = t.run_all()
+# #train.to_excel("../data/01/2019sales_v2.xlsx")
+#
+# train.to_pickle("../data/20/train_v2.pkl")
+t = Features(test=True)
+test_v2 = t.run_all()
+test_v2.to_pickle("../data/20/test_v2.pkl")
