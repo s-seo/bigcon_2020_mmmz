@@ -847,9 +847,9 @@ class Features:
         :return: pandas dataframe
         """
         if self.is_test:
-            categories = pd.read_excel("../data/01/2020sales_test_added.xlsx")
+            categories = pd.read_excel("data/01/2020sales_test_added.xlsx")
         else:
-            categories = pd.read_excel("../data/01/2019sales_added.xlsx")
+            categories = pd.read_excel("data/01/2019sales_added.xlsx")
             categories.rename(columns={' 취급액 ': '취급액'}, inplace=True)
         categories.상품코드 = categories.상품코드.dropna().astype(int).astype(str).str.zfill(6)
         categories.방송일시 = pd.to_datetime(categories.방송일시, format="%Y/%m/%d %H:%M")
