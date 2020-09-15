@@ -16,6 +16,10 @@ import json
 
 class Features:
     def __init__(self, test=False):
+        """
+        :objective: load data and engineer features
+        :param test: boolean  - whether to get test data. if false, we can work on raw train dataset(2019 sales)
+        """
         self.is_test = test
         # load test data
         if self.is_test:
@@ -24,6 +28,7 @@ class Features:
         # load train data
         else:
             df = pd.read_csv("../data/00/2019sales.csv", skiprows=1)
+            # adjust data types
             df.rename(columns={' 취급액 ': '취급액'}, inplace=True)
             df.취급액 = df.취급액.str.replace(",", "").astype(float)
             df.판매단가 = df.판매단가.str.replace(",", "").replace(' - ', np.nan).astype(float)
@@ -39,6 +44,7 @@ class Features:
         df['ymd'] = [d.date() for d in df["방송일시"]]
         self.train = df
         # define ts_schedule, one row for each timeslot
+        # then 방송일시 works as index in ts_schedule
         self.ts_schedule = df.copy().groupby('방송일시').first()
         self.ts_schedule.reset_index(inplace=True)
 
@@ -305,16 +311,20 @@ class Features:
         :objective: return 1 if its hour is within its small c's primetime
         """
         if not self.is_test:
+            # create table with top two sales hourly+small_c
             hours_smallc = self.train.groupby(['hours', 'small_c']) \
                 ['취급액'].sum().rename("tot_sales").groupby(level=0, group_keys=False)
             hours_smallc_list = hours_smallc.nlargest(2)
             try:
+                # write pickle file to be used later (when creating test)
                 pd.DataFrame(hours_smallc_list).to_pickle("../data/12/small_c_primet.pkl")
             except:
                 print("fail to write pickle")
         else:
+            # if test, load pickle data storing prime time info based on train data
             hours_smallc_list = pd.read_pickle("../data/12/small_c_primet.pkl")
 
+        # define blank col
         self.train['prime_smallc'] = 0
         for hr, small_c_nm in hours_smallc_list.index:
             self.train.prime_smallc.loc[(self.train.hours == hr) & (self.train.small_c == small_c_nm)] = 1
@@ -328,7 +338,9 @@ class Features:
                     will not be included in the final input
         """
         if not self.is_test:
+            # will not be calculated when creating test
             self.train['sales_power'] = 0
+            # sum(exposed time)/sum(sold volume)
             bp = self.train.groupby('상품코드').exposed.sum() / self.train.groupby('상품코드').volume.sum()
             for i in bp.index:
                 self.train.sales_power.loc[self.train.상품코드 == i] = bp.loc[i]
@@ -341,6 +353,7 @@ class Features:
             # define top ten frequently sold items list
             freq_list = self.train.groupby('상품코드').show_id.nunique().sort_values(ascending=False).index[1:10]
             try:
+                # write pickle file to be used later (when creating test)
                 pd.DataFrame(freq_list).to_pickle("../data/12/freq_list.pkl")
             except:
                 print("fail to write pickle")
@@ -711,7 +724,7 @@ class Features:
             # merge
             self.train.loc[self.train['show_id'] == curr_wk, 'lag_all_price_day'] = mean_price
 
-    def get_lag_sales(self):
+    def get_lag_sales(self, not_divided = False):
         """
         :objective: get sales lag 1,2 for weekend cases and lag 1 to 5 for weekday cases; pointwisely
         :return: pd.DataFrame - including lag_sales_wk_i (i = 1,2), lag_sales_wd_i (i = 1,2,3,4,5)
@@ -719,65 +732,100 @@ class Features:
         # stack 2019-may data to get lag vars if self.is_test = True
         if self.is_test:
             full_train = pd.read_pickle("../data/20/train_v2.pkl")
-            # extract only 2019-may data
-            train_may = full_train.loc[(full_train.ymd > datetime.date(2019, 5, 25)) & (full_train.months == 5)]
-            # extract only columns existing in test dataset
-            col = self.train.columns
-            # stack 2019-may data
-            self.train = pd.concat([train_may.loc[:, col], self.train], join='outer', sort=False)
+            # extract only 2019-dec data
+            train_dec = full_train.loc[full_train.months == 12]. \
+                sort_values(['방송일시'])
+            # define new 'day_hour' column to match df
+            # lag values of train_dec will be injected by day_hour
+            train_dec['day_hour'] = train_dec.방송일시.dt.strftime("%d %H")
+            self.train['day_hour'] = self.train.방송일시.dt.strftime("%d %H")
 
-        df_wk = self.train[self.train.weekends == 1]  # weekend case
-        for i in range(1, 3): # lags for 1,2 diff
-            temp_df = df_wk[['ymd', 'hours', '취급액']]
-            temp_df = pd.DataFrame(temp_df.groupby(['ymd', 'hours'])['취급액'].sum())
-            temp_df = pd.DataFrame(temp_df.groupby(level=1)['취급액'].shift(i))
-            df_wk = pd.merge(right=temp_df, left=df_wk, on=['ymd', 'hours'], how='left')
-            df_wk = df_wk.rename(columns={'취급액_x': '취급액', '취급액_y': 'lag_sales_wk_' + str(i)})
+            lag_cols = ['day_hour', 'lag_sales_wd_1', 'lag_sales_wd_2',
+                        'lag_sales_wd_3', 'lag_sales_wd_4', 'lag_sales_wd_5', 'lag_sales_wk_1',
+                        'lag_sales_wk_2']
+            train_dec_lags = train_dec[lag_cols].groupby(['day_hour']).mean()
+            train_dec_lags.reset_index(inplace=True)
+            self.train = pd.merge(left=self.train, right=train_dec_lags[lag_cols], how='left',
+                                 on=['day_hour'])
+            self.train.drop(['day_hour'], axis=1, inplace=True)
 
-        df_wd = self.train[self.train.weekends == 0]  # weekday case
-        for i in range(1, 6): # lags for 1,5 day diff
-            temp_df = df_wd[['ymd', 'hours', '취급액']]
-            temp_df = pd.DataFrame(temp_df.groupby(['ymd', 'hours'])['취급액'].sum())
-            temp_df = pd.DataFrame(temp_df.groupby(level=1)['취급액'].shift(i))
-            df_wd = pd.merge(right=temp_df, left=df_wd, on=['ymd', 'hours'], how='left')
-            df_wd = df_wd.rename(columns={'취급액_x': '취급액', '취급액_y': 'lag_sales_wd_' + str(i)})
+        else:
+            if not_divided:
+                for i in range(1, 6):  # lags for 1,5 diff
+                    temp_df = self.train[['ymd', 'hours', '취급액']]
+                    temp_df = pd.DataFrame(temp_df.groupby(['ymd', 'hours'])['취급액'].sum())
+                    temp_df = pd.DataFrame(temp_df.groupby(level=1)['취급액'].shift(i))
+                    df_wkwd = pd.merge(right=temp_df, left=self.train, on=['ymd', 'hours'], how='left')
+                    df_wkwd = df_wkwd.rename(columns={'취급액_x': '취급액', '취급액_y': 'lag_sales_' + str(i)})
+                self.train = df_wkwd
 
-        self.train = pd.concat([df_wd, df_wk], join='outer', sort=False)
-        # drop 2019 may data
-        if self.is_test:
-            self.train = self.train.loc[self.train.방송일시.dt.month != 5]
+            else:
+                df_wk = self.train[self.train.weekends == 1]  # weekend case
+                for i in range(1, 3): # lags for 1,2 diff
+                    temp_df = df_wk[['ymd', 'hours', '취급액']]
+                    temp_df = pd.DataFrame(temp_df.groupby(['ymd', 'hours'])['취급액'].sum())
+                    temp_df = pd.DataFrame(temp_df.groupby(level=1)['취급액'].shift(i))
+                    df_wk = pd.merge(right=temp_df, left=df_wk, on=['ymd', 'hours'], how='left')
+                    df_wk = df_wk.rename(columns={'취급액_x': '취급액', '취급액_y': 'lag_sales_wk_' + str(i)})
+
+                df_wd = self.train[self.train.weekends == 0]  # weekday case
+                for i in range(1, 6): # lags for 1,5 day diff
+                    temp_df = df_wd[['ymd', 'hours', '취급액']]
+                    temp_df = pd.DataFrame(temp_df.groupby(['ymd', 'hours'])['취급액'].sum())
+                    temp_df = pd.DataFrame(temp_df.groupby(level=1)['취급액'].shift(i))
+                    df_wd = pd.merge(right=temp_df, left=df_wd, on=['ymd', 'hours'], how='left')
+                    df_wd = df_wd.rename(columns={'취급액_x': '취급액', '취급액_y': 'lag_sales_wd_' + str(i)})
+
+                self.train = pd.concat([df_wd, df_wk], join='outer', sort=False)
+
 
     def get_rolling_means(self):
         """
-        :objective: compute rolling means by 상품군 for 7/14 days
+        :objective: compute rolling means by 마더코드 for 7/14 days
         :param: df - pd.DataFrame
         :return: pd.DataFrme - including rolling_mean_i (i=7,14)
         """
-        # stack 2019-may data to get lag vars if self.is_test = True
+        # stack 2019-12 data to get lag vars if self.is_test = True
         if self.is_test:
             full_train = pd.read_pickle("../data/20/train_v2.pkl")
             # extract only 2019-may data
-            train_may = full_train.loc[(full_train.ymd > datetime.date(2019, 5, 15)) & (full_train.months == 5)]
-            train_may.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
-            # change year as 2020 may
-            train_may.방송일시 = train_may.방송일시 + np.timedelta64(366, 'D')
-            train_may.ymd = train_may.ymd.apply(lambda x: (np.datetime64(x) + pd.Timedelta(366, unit='D')).date())
-            # extract only columns existing in test dataset
-            col = self.train.columns
-            # stack 2019-may data
-            self.train = pd.concat([train_may.loc[:, col], self.train], join='outer', sort=False)
+            train_dec = full_train.loc[(full_train.ymd > datetime.date(2019, 12, 15)) & (full_train.months == 12)]
+            train_dec.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+
+            lag_cols = ['ymd', 'rolling_mean_7', 'rolling_mean_14']
+            train_dec_lags = train_dec[lag_cols].groupby(['ymd']).mean()
+            train_dec_lags.reset_index(inplace=True)
+            self.train = pd.merge(left=self.train, right=train_dec_lags[lag_cols], how='left',
+                                  on=['ymd'])
 
         for i in [7, 14]:
             self.train['rolling_mean_' + str(i)] = 0
             for time_slot in self.train.ymd.unique():
                 time_slot = pd.to_datetime(time_slot)
                 for category in self.train.상품군.unique():
-                     self.train['rolling_mean_' + str(i)].loc[(self.train.ymd == time_slot) & (self.train.상품군 == category)] =\
-                                    self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
-                                    (self.train.방송일시 < time_slot) & (self.train.상품군 == category)].취급액.mean()
+                     self.train['rolling_mean_' + str(i)].loc[(self.train.ymd == time_slot) &
+                                                              (self.train.상품군 == category)] =\
+                            self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
+                                (self.train.방송일시 < time_slot) & (self.train.상품군 == category)].취급액.mean()
         # drop 2019 may data
         if self.is_test:
             self.train = self.train.loc[self.train.방송일시.dt.month != 5]
+
+    def get_rolling_means_mcode(self):
+        """
+        :objective: compute rolling means by 마더코드 for 7/14 days
+        :param: df - pd.DataFrame
+        :return: pd.DataFrme - including rolling_mean_i (i=7,14)
+        """
+        for i in [7, 14]:
+            self.train['rolling_mean_mcode_' + str(i)] = 0
+            for time_slot in self.train.ymd.unique():
+                time_slot = pd.to_datetime(time_slot)
+                for category in self.train.마더코드.unique():
+                     self.train['rolling_mean_mcode_' + str(i)].loc[(self.train.ymd == time_slot) &
+                                                              (self.train.마더코드 == category)] =\
+                            self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
+                                (self.train.방송일시 < time_slot) & (self.train.마더코드 == category)].취급액.mean()
 
 
     def get_ts_pred(self, type='Prophet'):
@@ -1054,7 +1102,11 @@ class Features:
         self.get_rolling_means()
         print("finish getting get_rolling_means data")
         print(self.train.shape, ": df shape")
+        self.get_rolling_means_mcode()
+        print("finish getting get_rolling_means_mcode data")
+        print(self.train.shape, ": df shape")
         self.get_lag_sales()
+        #self.get_lag_sales(not_divided = True)
         print("finish getting get_lag_sales data")
         print(self.train.shape, ": df shape")
         self.get_ts_pred()
