@@ -729,21 +729,26 @@ class Features:
         :objective: get sales lag 1,2 for weekend cases and lag 1 to 5 for weekday cases; pointwisely
         :return: pd.DataFrame - including lag_sales_wk_i (i = 1,2), lag_sales_wd_i (i = 1,2,3,4,5)
         """
-        # stack 2019-may data to get lag vars if self.is_test = True
+        # use 2019-december data to get lag vars if self.is_test = True
         if self.is_test:
-            full_train = pd.read_pickle("../data/20/train_v2.pkl")
+            if not_divided:
+                full_train = pd.read_pickle("../data/20/train_fin_light_ver.pkl")
+                lag_cols = ['day_hour','lag_sales_1', 'lag_sales_2',
+                            'lag_sales_5', 'lag_sales_7']
+            else:
+                full_train = pd.read_pickle("../data/20/train_v2.pkl")
+                lag_cols = ['day_hour', 'lag_sales_wd_1', 'lag_sales_wd_2',
+                            'lag_sales_wd_3', 'lag_sales_wd_4', 'lag_sales_wd_5', 'lag_sales_wk_1',
+                            'lag_sales_wk_2']
             # extract only 2019-dec data
             train_dec = full_train.loc[full_train.months == 12]. \
                 sort_values(['방송일시'])
             # define new 'day_hour' column to match df
             # lag values of train_dec will be injected by day_hour
-            train_dec['day_hour'] = train_dec.방송일시.dt.strftime("%d %H")
-            self.train['day_hour'] = self.train.방송일시.dt.strftime("%d %H")
+            # need to extract one day from december data since Dec 1st is Sunday but June 1st is Monday
+            train_dec['day_hour'] = (train_dec.days - 1).astype(str) + '/' + train_dec.hours.astype(str)
+            self.train['day_hour'] = self.train.days.astype(str) + '/' + self.train.hours.astype(str)
 
-            lag_cols = ['day_hour', 'lag_sales_wd_1', 'lag_sales_wd_2',
-                        'lag_sales_wd_3', 'lag_sales_wd_4', 'lag_sales_wd_5', 'lag_sales_wk_1',
-                        'lag_sales_wk_2','lag_sales_1', 'lag_sales_2',
-                        'lag_sales_3', 'lag_sales_4', 'lag_sales_5']
             train_dec_lags = train_dec[lag_cols].groupby(['day_hour']).mean()
             train_dec_lags.reset_index(inplace=True)
             self.train = pd.merge(left=self.train, right=train_dec_lags[lag_cols], how='left',
@@ -783,6 +788,35 @@ class Features:
 
     def get_rolling_means(self):
         """
+        :objective: compute rolling means by 상품군 for 7/14 days
+        :param: df - pd.DataFrame
+        :return: pd.DataFrme - including rolling_mean_i (i=7,14)
+        """
+        # stack 2019-12 data to get lag vars if self.is_test = True
+        if self.is_test:
+            full_train = pd.read_pickle("../data/20/train_v2.pkl")
+            # extract only 2019-may data
+            train_dec = full_train.loc[(full_train.ymd > datetime.date(2019, 12, 15)) & (full_train.months == 12)]
+            train_dec.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+            train_dec['days'] = train_dec.days - 1
+            lag_cols = ['days', '상품군', 'rolling_mean_7', 'rolling_mean_14']
+            train_dec_lags = train_dec[lag_cols].groupby(['days', '상품군']).mean()
+            train_dec_lags.reset_index(inplace=True)
+            self.train = pd.merge(left=self.train, right=train_dec_lags[lag_cols], how='left',
+                                  on=['days', '상품군'])
+        else:
+            for i in [7, 14]:
+                self.train['rolling_mean_' + str(i)] = 0
+                for time_slot in self.train.ymd.unique():
+                    time_slot = pd.to_datetime(time_slot)
+                    for category in self.train.상품군.unique():
+                         self.train['rolling_mean_' + str(i)].loc[(self.train.ymd == time_slot) &
+                                                                  (self.train.상품군 == category)] =\
+                                self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
+                                    (self.train.방송일시 < time_slot) & (self.train.상품군 == category)].취급액.mean()
+
+    def get_rolling_means_mcode(self):
+        """
         :objective: compute rolling means by 마더코드 for 7/14 days
         :param: df - pd.DataFrame
         :return: pd.DataFrme - including rolling_mean_i (i=7,14)
@@ -793,41 +827,23 @@ class Features:
             # extract only 2019-may data
             train_dec = full_train.loc[(full_train.ymd > datetime.date(2019, 12, 15)) & (full_train.months == 12)]
             train_dec.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
-
-            lag_cols = ['ymd', 'rolling_mean_7', 'rolling_mean_14']
-            train_dec_lags = train_dec[lag_cols].groupby(['ymd']).mean()
+            train_dec['days'] = train_dec.days - 1
+            lag_cols = ['days', '마더코드', 'rolling_mean_7', 'rolling_mean_14']
+            train_dec_lags = train_dec[lag_cols].groupby(['days', '마더코드']).mean()
+            train_dec_lags.rename(columns={'rolling_mean_7': 'rolling_mean_mcode_7', 'rolling_mean_14': 'rolling_mean_mcode_14'})
             train_dec_lags.reset_index(inplace=True)
             self.train = pd.merge(left=self.train, right=train_dec_lags[lag_cols], how='left',
-                                  on=['ymd'])
-
-        for i in [7, 14]:
-            self.train['rolling_mean_' + str(i)] = 0
-            for time_slot in self.train.ymd.unique():
-                time_slot = pd.to_datetime(time_slot)
-                for category in self.train.상품군.unique():
-                     self.train['rolling_mean_' + str(i)].loc[(self.train.ymd == time_slot) &
-                                                              (self.train.상품군 == category)] =\
-                            self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
-                                (self.train.방송일시 < time_slot) & (self.train.상품군 == category)].취급액.mean()
-        # drop 2019 may data
-        if self.is_test:
-            self.train = self.train.loc[self.train.방송일시.dt.month != 5]
-
-    def get_rolling_means_mcode(self):
-        """
-        :objective: compute rolling means by 마더코드 for 7/14 days
-        :param: df - pd.DataFrame
-        :return: pd.DataFrme - including rolling_mean_i (i=7,14)
-        """
-        for i in [7, 14]:
-            self.train['rolling_mean_mcode_' + str(i)] = 0
-            for time_slot in self.train.ymd.unique():
-                time_slot = pd.to_datetime(time_slot)
-                for category in self.train.마더코드.unique():
-                     self.train['rolling_mean_mcode_' + str(i)].loc[(self.train.ymd == time_slot) &
-                                                              (self.train.마더코드 == category)] =\
-                            self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
-                                (self.train.방송일시 < time_slot) & (self.train.마더코드 == category)].취급액.mean()
+                                  on=['days', '마더코드'])
+        else:
+            for i in [7, 14]:
+                self.train['rolling_mean_mcode_' + str(i)] = 0
+                for time_slot in self.train.ymd.unique():
+                    time_slot = pd.to_datetime(time_slot)
+                    for category in self.train.마더코드.unique():
+                         self.train['rolling_mean_mcode_' + str(i)].loc[(self.train.ymd == time_slot) &
+                                                                  (self.train.마더코드 == category)] =\
+                                self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
+                                    (self.train.방송일시 < time_slot) & (self.train.마더코드 == category)].취급액.mean()
 
 
     def get_ts_pred(self, type='Prophet'):
@@ -1118,9 +1134,10 @@ class Features:
         return self.train
 
 
-t = Features()
-train = t.run_all()
-train.to_pickle("../data/20/train_fin_light_ver.pkl")
-# t = Features(test=True)
-# test_v2 = t.run_all()
+# t = Features()
+# train = t.run_all()
+# train.to_pickle("../data/20/train_fin_light_ver.pkl")
+t = Features(test=True)
+test_v2 = t.run_all()
 # test_v2.to_pickle("../data/20/test_v2.pkl")
+test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
