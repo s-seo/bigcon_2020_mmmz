@@ -742,7 +742,8 @@ class Features:
 
             lag_cols = ['day_hour', 'lag_sales_wd_1', 'lag_sales_wd_2',
                         'lag_sales_wd_3', 'lag_sales_wd_4', 'lag_sales_wd_5', 'lag_sales_wk_1',
-                        'lag_sales_wk_2']
+                        'lag_sales_wk_2','lag_sales_1', 'lag_sales_2',
+                        'lag_sales_3', 'lag_sales_4', 'lag_sales_5']
             train_dec_lags = train_dec[lag_cols].groupby(['day_hour']).mean()
             train_dec_lags.reset_index(inplace=True)
             self.train = pd.merge(left=self.train, right=train_dec_lags[lag_cols], how='left',
@@ -751,11 +752,12 @@ class Features:
 
         else:
             if not_divided:
-                for i in range(1, 6):  # lags for 1,5 diff
-                    temp_df = self.train[['ymd', 'hours', '취급액']]
+                df_wkwd = self.train
+                for i in [1,2,5,7]:  # lags for 1,5 diff
+                    temp_df = df_wkwd[['ymd', 'hours', '취급액']]
                     temp_df = pd.DataFrame(temp_df.groupby(['ymd', 'hours'])['취급액'].sum())
                     temp_df = pd.DataFrame(temp_df.groupby(level=1)['취급액'].shift(i))
-                    df_wkwd = pd.merge(right=temp_df, left=self.train, on=['ymd', 'hours'], how='left')
+                    df_wkwd = pd.merge(right=temp_df, left=df_wkwd, on=['ymd', 'hours'], how='left')
                     df_wkwd = df_wkwd.rename(columns={'취급액_x': '취급액', '취급액_y': 'lag_sales_' + str(i)})
                 self.train = df_wkwd
 
@@ -847,9 +849,9 @@ class Features:
         :return: pandas dataframe
         """
         if self.is_test:
-            categories = pd.read_excel("data/01/2020sales_test_added.xlsx")
+            categories = pd.read_excel("../data/01/2020sales_test_added.xlsx")
         else:
-            categories = pd.read_excel("data/01/2019sales_added.xlsx")
+            categories = pd.read_excel("../data/01/2019sales_added.xlsx")
             categories.rename(columns={' 취급액 ': '취급액'}, inplace=True)
         categories.상품코드 = categories.상품코드.dropna().astype(int).astype(str).str.zfill(6)
         categories.방송일시 = pd.to_datetime(categories.방송일시, format="%Y/%m/%d %H:%M")
@@ -1105,8 +1107,8 @@ class Features:
         self.get_rolling_means_mcode()
         print("finish getting get_rolling_means_mcode data")
         print(self.train.shape, ": df shape")
-        self.get_lag_sales()
-        #self.get_lag_sales(not_divided = True)
+        # self.get_lag_sales()
+        self.get_lag_sales(not_divided = True)
         print("finish getting get_lag_sales data")
         print(self.train.shape, ": df shape")
         self.get_ts_pred()
@@ -1118,7 +1120,7 @@ class Features:
 
 t = Features()
 train = t.run_all()
-train.to_pickle("../data/20/train_v2.pkl")
+train.to_pickle("../data/20/train_fin_light_ver.pkl")
 # t = Features(test=True)
 # test_v2 = t.run_all()
 # test_v2.to_pickle("../data/20/test_v2.pkl")
