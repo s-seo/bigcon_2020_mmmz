@@ -56,10 +56,10 @@ featured_DATA_DIR = local_DIR + '/data/20'
 #   - df_all_lag : all days / +lags
 #   - df_all : all days
 
-df_wd_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_lag.pkl')
-df_wd_no_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_no_lag.pkl')
-df_wk_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wd_lag.pkl')
-df_wk_no_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wd_no_lag.pkl')
+df_wd_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wd_lag.pkl')
+df_wd_no_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wd_no_lag.pkl')
+df_wk_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_lag.pkl')
+df_wk_no_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_no_lag.pkl')
 df_all_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_light_ver.pkl')
 #df_all = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_lag.pkl')
 
@@ -102,7 +102,7 @@ len(cat_col)
 
 
 df_wk_lag.shape
-check_na(df_wk_lag.iloc[:,63:])
+check_na(df_wd_lag.iloc[:,40:63])
 
 ## simple function that will be used for run_preprocess
 def na_to_zeroes(df):
@@ -169,8 +169,8 @@ def run_preprocess(df, pca = True, replace = True):
         return df1
 
 ## Preprocessed datasets
-df_wk_lag_PP = run_preprocess(df_wk_lag, pca = True, replace =True)
-df_wk_no_lag_PP = run_preprocess(df_wk_no_lag, pca = True, replace =True)
+df_wk_lag_PP = run_preprocess(df_wk_lag, pca = True, replace =False)
+df_wk_no_lag_PP = run_preprocess(df_wk_no_lag, pca = True, replace =False)
 df_wd_lag_PP = run_preprocess(df_wd_lag, pca = True, replace = False)
 df_wd_no_lag_PP = run_preprocess(df_wd_no_lag, pca = True, replace =False)
 df_all_lag_pp = run_preprocess(df_all_lag, pca = True, replace =True)
@@ -182,11 +182,11 @@ df_all_lag_pp = run_preprocess(df_all_lag, pca = True, replace =True)
 
 ########################### Divide into train/val
 ###############################################################################
+train_x = df_wd_lag_PP.iloc[:16904,[1,2,6,76,75,74,73,72,71,70,69,68,67,66,65,64]]
+train_y = df_wd_lag_PP.iloc[:16904,3]
+val_x = df_wd_lag_PP.iloc[16904:,[1,2,6,76,75,74,73,72,71,70,69,68,67,66,65,64]]
+val_y = df_wd_lag_PP.iloc[16904:,3]
 
-train_x
-train_y
-val_x
-val_y
 
 
 
@@ -206,19 +206,19 @@ def seed_everything(seed=127):
 
 TARGET = '취급액'      # Our Target
 
-lgb_params = {      'boosting_type': 'gbdt',# Standart boosting type
+lgb_params = {      'boosting_type': 'dart',# Standart boosting type
                     'objective': 'regression',       # Standart loss for RMSE
                     'metric': ['rmse'],              # as we will use rmse as metric "proxy"
                     'subsample': 0.5,
                     'subsample_freq': 1,
-                    #'num_leaves': 2**5-1,            # We will need model only for fast check
+                    'num_leaves': 2**5-1,            # We will need model only for fast check
                     'min_data_in_leaf': 200,      # So we want it to train faster even with drop in generalization
                     'feature_fraction': 0.8,
-                    'n_estimators': 5000,# We don't want to limit training (you can change 5000 to any big enough number
-                    'num_iterations': 2000,
-                    'learning_rate' : 0.02,
-                    'scale_pos_weight' : 1.3,
-                    'categorical_feature': [0,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26],
+                    'n_estimators': 7000,# We don't want to limit training (you can change 5000 to any big enough number
+                    'num_iterations': 5000,
+                    'learning_rate' : 0.01,
+                    #'scale_pos_weight' : 1.3,
+                    #'categorical_feature': [0,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26],
                 }
 
 
