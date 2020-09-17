@@ -17,23 +17,26 @@ import pickle
 # sklearn
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler #StandardScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, OrdinalEncoder
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import cross_val_score
 from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import r2_score,mean_squared_error
 
-# keras
-from keras_models import create_model17EN1EN2emb1, create_model17noEN1EN2, create_model17
 
 # model
 import lightgbm as lgb
 from bayes_opt import BayesianOptimization
+from lightgbm import LGBMRegressor
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 # custom modules
 # from engine.features_yj import Features
-from engine.preprocess import load_df_added, drop_useless, check_na, na_to_zeroes, run_label_all, remove_outliers, drop_cat, run_stdscale, run_pca
-
+from engine.preprocess import load_df_added, drop_useless, check_na, run_label_all, remove_outliers, run_stdscale
+import tensorflow as tf
+import tensorflow.keras as keras
 
 
 ###############################################################################
@@ -45,7 +48,7 @@ from engine.preprocess import load_df_added, drop_useless, check_na, na_to_zeroe
 
 local_DIR = os.getcwd()
 featured_DATA_DIR = local_DIR + '/data/20'
-?PROCESSED_DATA_DIR = local_DIR +'/data/21'
+# ?PROCESSED_DATA_DIR = local_DIR +'/data/21'
 
 ## Import 6 types of dataset
 ## Descriptions:
@@ -56,11 +59,11 @@ featured_DATA_DIR = local_DIR + '/data/20'
 #   - df_all_lag : all days / +lags
 #   - df_all : all days
 
-df_wd_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wd_lag.pkl')
-df_wd_no_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wd_no_lag.pkl')
-df_wk_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_lag.pkl')
-df_wk_no_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_no_lag.pkl')
-df_all_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_light_ver.pkl')
+df_wd_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wd_lag.pkl').reset_index()
+df_wd_no_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wd_no_lag.pkl').reset_index()
+df_wk_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_lag.pkl').reset_index()
+df_wk_no_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_no_lag.pkl').reset_index()
+df_all_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_light_ver.pkl').reset_index()
 #df_all = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_lag.pkl')
 
 
@@ -68,11 +71,11 @@ df_all_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_light_ver.pkl')
 df_wd_lag = df_wd_lag.drop(columns = ['lag_sales_wk_1','lag_sales_wk_2'])
 df_wk_lag = df_wk_lag.drop(columns = ['lag_sales_wd_1', 'lag_sales_wd_2','lag_sales_wd_3', 'lag_sales_wd_4', 'lag_sales_wd_5'])
 
-df_wk_lag.shape # (25319, 87)
-df_wk_no_lag.shape # (25319, 83)
-df_wd_lag.shape # (10060, 90)
-df_wd_no_lag.shape # (10060, 83)
-df_all_lag.shape # (35379, 92)
+df_wk_lag.shape # (10060, 89)
+df_wk_no_lag.shape # (10060, 83)
+df_wd_lag.shape # (25319, 92)
+df_wd_no_lag.shape # (25319, 83)
+df_all_lag.shape # (35379, 91)
 
 
 ## set some Global Vars
@@ -82,9 +85,11 @@ lag_col1 = ['lag_scode_count','lag_mcode_price','lag_mcode_count','lag_bigcat_pr
             'lag_bigcat_price_day','lag_bigcat_count_day','lag_small_c_price','lag_small_c_count']
 
 lag_col2 = ['rolling_mean_7', 'rolling_mean_14', 'lag_sales_wd_1', 'lag_sales_wd_2','lag_sales_wd_3',
-            'lag_sales_wd_4', 'lag_sales_wd_5', 'lag_sales_wk_1','lag_sales_wk_2', 'ts_pred']
+            'lag_sales_wd_4', 'lag_sales_wd_5', 'lag_sales_wk_1','lag_sales_wk_2', 'ts_pred',
+           'rolling_mean_mcode_7','rolling_mean_mcode_14',]
 
 num_col = ['']
+
 cat_col = ['상품군','weekdays','show_id','small_c','middle_c','big_c',
                         'pay','months','hours_inweek','weekends','japp','parttime',
                         'min_start','primetime','prime_origin','prime_smallc',
@@ -97,12 +102,11 @@ len(cat_col)
 
 
 ###############################################################################
-########################### Preprocess + Train/Val ##############################
+############################### Preprocess  ##################################
 ###############################################################################
 
 
-df_wk_lag.shape
-check_na(df_wd_lag.iloc[:,40:63])
+check_na(df_wk_lag.iloc[:,:40])
 
 ## simple function that will be used for run_preprocess
 def na_to_zeroes(df):
@@ -110,7 +114,7 @@ def na_to_zeroes(df):
     :objective: Change all na's to zero.(just for original lag!)
     :return: pandas dataframe
     """
-    xcol = [x for x in df.columns if x in lag_col1+lag_col2]
+    xcol = [x for x in df.columns if x in lag_col1+lag_col2+['mid_click_r']]
     for col in xcol:
         df[col] = df[col].fillna(0)
 
@@ -169,23 +173,80 @@ def run_preprocess(df, pca = True, replace = True):
         return df1
 
 ## Preprocessed datasets
-df_wk_lag_PP = run_preprocess(df_wk_lag, pca = True, replace =False)
-df_wk_no_lag_PP = run_preprocess(df_wk_no_lag, pca = True, replace =False)
-df_wd_lag_PP = run_preprocess(df_wd_lag, pca = True, replace = False)
-df_wd_no_lag_PP = run_preprocess(df_wd_no_lag, pca = True, replace =False)
-df_all_lag_pp = run_preprocess(df_all_lag, pca = True, replace =True)
+df_wk_lag_PP = run_preprocess(df_wk_lag, pca = False, replace =False)
+df_wk_no_lag_PP = run_preprocess(df_wk_no_lag, pca = False, replace =False)
+df_wd_lag_PP = run_preprocess(df_wd_lag, pca = False, replace = False)
+df_wd_no_lag_PP = run_preprocess(df_wd_no_lag, pca = False, replace =False)
+df_all_lag_pp = run_preprocess(df_all_lag, pca = False, replace =True)
 
 #df_wd_lag_PP.to_csv ('df_wd_lag_PP.csv', index = False, header=True,encoding='ms949')
 #df_wd_no_lag_PP.to_csv ('df_wd_no_lag_PP.csv', index = False, header=True,encoding='ms949')
 
 
 
-########################### Divide into train/val
+
 ###############################################################################
-train_x = df_wd_lag_PP.iloc[:16904,[1,2,6,76,75,74,73,72,71,70,69,68,67,66,65,64]]
-train_y = df_wd_lag_PP.iloc[:16904,3]
-val_x = df_wd_lag_PP.iloc[16904:,[1,2,6,76,75,74,73,72,71,70,69,68,67,66,65,64]]
-val_y = df_wd_lag_PP.iloc[16904:,3]
+############################### Helper Functions  ##################################
+###############################################################################
+
+## quickly check distribution
+import seaborn as sns
+plt.figure(figsize=(10,10))
+sns.distplot(df_wd_lag_PP.취급액)
+sns.distplot(df_wd_lag_PP.rolling_mean_14)
+df_wd_lag_PP.columns
+
+
+## Seeder
+def seed_everything(seed=127):
+    random.seed(seed)
+    np.random.seed(seed)
+
+## metrics
+# negative mape
+def neg_mape(y_true, y_pred):
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+    result = (-1)*mape
+    return result
+
+# RMSE
+def get_rmse(y_true, y_pred):
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    rmse = np.sqrt(np.mean((y_true - y_pred)**2))
+    return rmse
+
+# MAE
+def get_mae(y_true, y_pred):
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    mae = np.mean(np.abs(y_true - y_pred))
+    return mae
+
+
+## CV splits
+def cv_split(df, month, printprop = False):
+    split = int(df[df['months']==month].index.values.max())
+    prop = str(split/df.shape[0])
+    if printprop:
+        print(f'Proportion of train set is {prop}')
+        return split
+    else:
+        return split
+
+
+## Divide into train/test
+def divide_train_val(df_pp, month, drop):
+    split = cv_split(df = df_pp, month = month)
+    train_x = df_wd_lag_PP.iloc[:split,:].drop(columns = ['index','show_id','취급액']+drop)
+    train_y = df_wd_lag_PP.iloc[:split,:].취급액
+    val_x = df_wd_lag_PP.iloc[split:,:].drop(columns = ['index','show_id','취급액']+drop)
+    val_y = df_wd_lag_PP.iloc[split:,:].취급액
+    return train_x, train_y, val_x, val_y
+
+
+train_x, train_y, val_x, val_y = divide_train_val(df_wd_lag_PP, 8, drop = ['small_c'])
+train_x.shape
+
 
 
 
@@ -194,40 +255,62 @@ val_y = df_wd_lag_PP.iloc[16904:,3]
 ########################### Light GBM ##############################
 ###############################################################################
 
-## Seeder
-def seed_everything(seed=127):
-    random.seed(seed)
-    np.random.seed(seed)
 
-
-
-########################### Model params
-###############################################################################
 
 TARGET = '취급액'      # Our Target
 
-lgb_params = {      'boosting_type': 'dart',# Standart boosting type
-                    'objective': 'regression',       # Standart loss for RMSE
-                    'metric': ['rmse'],              # as we will use rmse as metric "proxy"
-                    'subsample': 0.5,
-                    'subsample_freq': 1,
-                    'num_leaves': 2**5-1,            # We will need model only for fast check
-                    'min_data_in_leaf': 200,      # So we want it to train faster even with drop in generalization
-                    'feature_fraction': 0.8,
-                    'n_estimators': 7000,# We don't want to limit training (you can change 5000 to any big enough number
-                    'num_iterations': 5000,
-                    'learning_rate' : 0.01,
-                    #'scale_pos_weight' : 1.3,
-                    #'categorical_feature': [0,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26],
-                }
+gbm = LGBMRegressor(objective = 'regression',
+                     boosting_type = 'dart',
+                     metric = 'mape',
+                     n_estimators = 3000, #10000
+                     num_leaves = 10, #10
+                     learning_rate = 0.002, #0.01
+                     bagging_fraction = 0.9,
+                     feature_fraction = 0.5,
+                     bagging_seed = 0,
+                     categorical_feature = [0,9,10,11,3],
+                     #max_depth = 10,
+                                         )
+
+def run_lgbm(train_x, train_y, val_x, val_y):
+    seed_everything(seed=127)
+
+    estimator = gbm.fit(train_x,train_y,
+                        eval_set=[(val_x, val_y)],
+                        verbose = 100,
+                        eval_metric = 'mape',
+                        early_stopping_rounds = 100
+                        )
+    lgbm_preds = gbm.predict(val_x, num_iteration= estimator.best_iteration_)
+    lgbm_preds[lgbm_preds < 0] = 0
+
+    # plot
+    x = range(0,val_y.shape[0])
+    plt.figure(figsize=(50,10))
+    plt.plot(x,val_y,label='true')
+    plt.plot(x,lgbm_preds, label='predicted')
+    plt.legend()
+
+    plt.show()
+
+    # show scores
+    print(f'MAPE of best iter is {neg_mape(val_y,lgbm_preds)}')
+    print(f'MAE of best iter is {get_mae(val_y,lgbm_preds)}')
+    print(f'RMSE of best iter is {get_rmse(val_y,lgbm_preds)}')
+
+    # feature Importance
+    #fi = {'name' : estimator.feature_name_,'importance': estimator.feature_importances_}
+    #fi = pd.DataFrame(fi, columns = ['name','importance'])
+    #fi.sort_values(by=['importance'], inplace=True, ascending = False)
+
+    #return fi
+
+# save model
+data_type = 'wk_lag'
+model_name = MODELS_DIR+'lgbm_finalmodel_'+data_type+'.bin'
+pickle.dump(estimator, open(model_name, 'wb'))
 
 
-
-########################### Baseline Model
-###############################################################################
-
-## This will be our base model
-## improve it with BO
 
 def make_fast_test(train_x, train_y, val_x, val_y):
 
@@ -247,16 +330,27 @@ def make_fast_test(train_x, train_y, val_x, val_y):
 baseline_model = make_fast_test(train_x, train_y, val_x, val_y)
 
 
+# run for each cv
+cv_months = [7,8,9]
+
+for num in cv_months:
+    month = num
+    train_x, train_y, val_x, val_y = divide_train_val(df_wd_lag_PP, month, drop = ['small_c'])
+    print(f'CV with month {month} is starting.')
+    run_lgbm(train_x, train_y, val_x, val_y)
+
+
+
+
+
+
+
+
 
 ########################### Hyperparameter Tuning
 ###############################################################################
 
 ## Score metric
-def neg_mape(y_true, y_pred):
-    y_true, y_pred = np.array(y_true), np.array(y_pred)
-    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
-    result = (-1)*mape
-    return result
 my_scorer = make_scorer(neg_mape, greater_is_better=True)
 
 
@@ -361,3 +455,30 @@ BO_params, BO_model = BO_execute(train_data, valid_data)
 ###############################################################################
 ########################### KERAS ##############################
 ###############################################################################
+save_model_weights
+
+
+
+
+###############################################################################
+########################### Ensemble ##############################
+###############################################################################
+lgbm_preds
+keras_preds
+
+# 판매단가 기준
+# grid search
+def set_threshold:
+
+for num in thresholds:
+
+
+MAPE
+mae
+
+
+###############################################################################
+########################### Predict ##############################
+###############################################################################
+
+submission = pd.Dataframe()
