@@ -876,7 +876,7 @@ class Features:
         self.train = pd.merge(left=self.train,
                               right=categories[
                                   ['방송일시', '상품코드', 'small_c', 'small_c_code', 'middle_c', 'middle_c_code', 'big_c',
-                                   'big_c_code']],
+                                   'big_c_code','original_c']],
                               how='inner', on=['방송일시', '상품코드'], sort=False)
 
     def add_vratings(self):
