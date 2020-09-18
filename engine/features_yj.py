@@ -24,7 +24,7 @@ class Features:
         # load test data
         if self.is_test:
             df = pd.read_excel("../data/00/202006schedule.xlsx", skiprows=1)
-
+ 
         # load train data
         else:
             df = pd.read_csv("../data/00/2019sales.csv", skiprows=1)
@@ -823,16 +823,23 @@ class Features:
         """
         # stack 2019-12 data to get lag vars if self.is_test = True
         if self.is_test:
-            full_train = pd.read_pickle("../data/20/train_v2.pkl")
+            df2 = pd.read_excel("../data/01/2020sales_test_added.xlsx")
+            df2 = df2.drop(2891, axis=0)
+            temp = pd.merge(left = self.train, right=df2[['상품명','original_c']], on='상품명', how='left')
+
+            full_train = pd.read_pickle("../data/20/train_fin_light_ver.pkl")
             # extract only 2019-Dec data
             train_dec = full_train.loc[(full_train.ymd > datetime.date(2019, 12, 15)) & (full_train.months == 12)]
             train_dec.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
             train_dec['days'] = train_dec.days - 1
-            lag_cols = ['days', 'original_c', 'rolling_mean_7', 'rolling_mean_14']
+            lag_cols = ['days', 'original_c', 'rolling_mean_origin_7', 'rolling_mean_origin_14', 
+                        'rolling_mean_origin_21','rolling_mean_origin_28']
             train_dec_lags = train_dec[lag_cols].groupby(['days', 'original_c']).mean()
-            train_dec_lags.rename(columns={'rolling_mean_7': 'rolling_mean_origin_7', 'rolling_mean_14': 'rolling_mean_origin_14'})
             train_dec_lags.reset_index(inplace=True)
-            self.train = pd.merge(left=self.train, right=train_dec_lags[['days','original_c','rolling_mean_origin_7','rolling_mean_origin_14']], how='left',
+            self.train = pd.merge(left=temp, right=train_dec_lags[['days','original_c','rolling_mean_origin_7',
+                                                                         'rolling_mean_origin_14', 'rolling_mean_origin_21', 
+                                                                         'rolling_mean_origin_28']], how='left',
+                                  
                                   on=['days', 'original_c'])
         else:
             for i in [7, 14, 21, 28]:
