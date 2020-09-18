@@ -883,8 +883,8 @@ class Features:
         self.train = pd.merge(left=self.train,
                               right=categories[
                                   ['방송일시', '상품코드', 'small_c', 'small_c_code', 'middle_c', 'middle_c_code', 'big_c',
-                                   'big_c_code','original_c']],
-                              how='inner', on=['방송일시', '상품코드'], sort=False)
+                                   'big_c_code', 'original_c']],
+                              how='left', on=['방송일시', '상품코드'], sort=False)
 
     def add_vratings(self):
         """
@@ -1141,10 +1141,10 @@ class Features:
         return self.train
 
 
-# t = Features()
-# train = t.run_all()
-# train.to_pickle("../data/20/train_fin_light_ver.pkl")
-t =Features(test=True)
-test_v2 = t.run_all()
-test_v2.to_pickle("../data/20/test_v2.pkl")
+t = Features()
+train = t.run_all()
+train.to_pickle("../data/20/train_fin_light_ver.pkl")
+# t =Features(test=True)
+# test_v2 = t.run_all()
+# test_v2.to_pickle("../data/20/test_v2.pkl")
 # test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
