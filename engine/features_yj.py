@@ -796,16 +796,16 @@ class Features:
         if self.is_test:
             full_train = pd.read_pickle("../data/20/train_v2.pkl")
             # extract only 2019-Dec data
-            train_dec = full_train.loc[(full_train.ymd > datetime.date(2019, 12, 15)) & (full_train.months == 12)]
+            train_dec = full_train.loc[(full_train.months == 12)]
             train_dec.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
             train_dec['days'] = train_dec.days - 1
-            lag_cols = ['days', '상품군', 'rolling_mean_7', 'rolling_mean_14']
+            lag_cols = ['days', '상품군', 'rolling_mean_7', 'rolling_mean_14', 'rolling_mean_21', 'rolling_mean_28']
             train_dec_lags = train_dec[lag_cols].groupby(['days', '상품군']).mean()
             train_dec_lags.reset_index(inplace=True)
             self.train = pd.merge(left=self.train, right=train_dec_lags[lag_cols], how='left',
                                   on=['days', '상품군'])
         else:
-            for i in [7, 14]:
+            for i in [7, 14, 21, 28]:
                 self.train['rolling_mean_' + str(i)] = 0
                 for time_slot in self.train.ymd.unique():
                     time_slot = pd.to_datetime(time_slot)
@@ -815,7 +815,7 @@ class Features:
                                 self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
                                     (self.train.방송일시 < time_slot) & (self.train.상품군 == category)].취급액.mean()
 
-    def get_rolling_means_origin(self):
+    def get_mean_sales_origin(self):
         """
         :objective: compute rolling means by original code for 7/14 days
         :param: df - pd.DataFrame
@@ -824,32 +824,36 @@ class Features:
         # stack 2019-12 data to get lag vars if self.is_test = True
         if self.is_test:
             df2 = pd.read_excel("../data/01/2020sales_test_added.xlsx")
-            df2 = df2.drop(2891, axis=0)
-            temp = pd.merge(left = self.train, right=df2[['상품명','original_c']], on='상품명', how='left')
-
+            self.train = pd.merge(left = self.train, right=df2[['상품명','original_c']], on='상품명', how='left')
+            
             full_train = pd.read_pickle("../data/20/train_fin_light_ver.pkl")
-            # extract only 2019-Dec data
-            train_dec = full_train.loc[(full_train.ymd > datetime.date(2019, 12, 15)) & (full_train.months == 12)]
+            
+            # extract 2019-Dec data
+            train_dec = full_train.loc[(full_train.months == 12)]
             train_dec.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
-            train_dec['days'] = train_dec.days - 1
-            lag_cols = ['days', 'original_c', 'rolling_mean_origin_7', 'rolling_mean_origin_14',
-                        'rolling_mean_origin_21','rolling_mean_origin_28']
-            train_dec_lags = train_dec[lag_cols].groupby(['days', 'original_c']).mean()
+            train_dec_lags = train_dec[['original_c', '취급액']].groupby(['original_c']).mean()
             train_dec_lags.reset_index(inplace=True)
-            self.train = pd.merge(left=temp, right=train_dec_lags[['days','original_c','rolling_mean_origin_7',
-                                                                         'rolling_mean_origin_14', 'rolling_mean_origin_21', 'rolling_mean_origin_28']],
-                                  how='left', on=['days', 'original_c'])
-        else:
-            for i in [7, 14, 21, 28]:
-                self.train['rolling_mean_origin_' + str(i)] = 0
-                for time_slot in self.train.ymd.unique():
-                    time_slot = pd.to_datetime(time_slot)
-                    for category in self.train.original_c.unique():
-                         self.train['rolling_mean_origin_' + str(i)].loc[(self.train.ymd == time_slot) &
-                                                                  (self.train.original_c == category)] =\
-                                self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
-                                    (self.train.방송일시 < time_slot) & (self.train.original_c == category)].취급액.mean()
 
+            # extract 2019-Jun data
+            train_jun = full_train.loc[(full_train.months == 6)]
+            train_jun.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+            train_jun_lags = train_jun[['original_c', '취급액']].groupby(['original_c']).mean()
+            train_jun_lags.reset_index(inplace=True)
+
+            train_mso = pd.concat([train_jun_lags, train_dec_lags]).groupby(['original_c']).mean()
+            train_mso.reset_index(inplace=True)
+            train_mso = train_mso.rename(columns = {'취급액':'mean_sales_origin'})
+            
+#            self.train['mean_sales_origin'] = self.train.merge(train_mso, how='left', on=['original_c'])['mean_sales_origin'].values
+#            temp['original_c'] = temp['original_c'].str.strip()
+#            train_mso.original_c = train_mso.original_c.str.strip()
+            self.train = pd.merge(left=self.train, right=train_mso, on = 'original_c', how = "left")
+        else :
+            month_ori = self.train[['months','original_c','취급액']].groupby(['months','original_c']).mean()
+            month_ori.reset_index(inplace=True)
+            month_ori = month_ori.rename(columns = {'취급액':'mean_sales_origin'})
+            self.train = pd.merge(left = self.train, right = month_ori, on = ['months','original_c'], how = 'left')
+   
 
     def get_ts_pred(self, type='Prophet'):
         """
@@ -1125,13 +1129,13 @@ class Features:
         self.get_rolling_means()
         print("finish getting get_rolling_means data")
         print(self.train.shape, ": df shape")
-        self.get_rolling_means_origin()
+        self.get_mean_sales_origin()
         print("finish getting get_rolling_means_mcode data")
         print(self.train.shape, ": df shape")
 
         ### not dividedd
         # self.get_lag_sales()
-        self.get_lag_sales(not_divided = True)
+        self.get_lag_sales(not_divided = False)
         print("finish getting get_lag_sales data")
         print(self.train.shape, ": df shape")
         self.get_ts_pred()
@@ -1141,12 +1145,12 @@ class Features:
         return self.train
 
 
-t = Features()
+# t = Features()
 # train = t.run_all()
 # train.to_pickle("../data/20/train_v2.pkl")
 # train.to_pickle("../data/20/train_fin_light_ver.pkl")
 t =Features(test=True)
 test_v2 = t.run_all()
-# test_v2.to_pickle("../data/20/test_v2.pkl")
-test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
+test_v2.to_pickle("../data/20/test_v2.pkl")
+# test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
 #
