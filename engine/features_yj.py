@@ -837,7 +837,8 @@ class Features:
             train_dec_lags = train_dec[lag_cols].groupby(['days', 'original_c']).mean()
             train_dec_lags.reset_index(inplace=True)
             self.train = pd.merge(left=temp, right=train_dec_lags[['days','original_c','rolling_mean_origin_7',
-                                                                         'rolling_mean_origin_14', 'rolling_mean_origin_21', 'rolling_mean_origin_28']],
+                                                                   'rolling_mean_origin_14', 'rolling_mean_origin_21',
+                                                                   'rolling_mean_origin_28']],
                                   how='left', on=['days', 'original_c'])
         else:
             for i in [7, 14, 21, 28]:
