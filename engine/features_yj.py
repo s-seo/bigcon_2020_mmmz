@@ -828,11 +828,11 @@ class Features:
             train_dec = full_train.loc[(full_train.ymd > datetime.date(2019, 12, 15)) & (full_train.months == 12)]
             train_dec.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
             train_dec['days'] = train_dec.days - 1
-            lag_cols = ['days', 'original_c', 'rolling_mean_7', 'rolling_mean_14']
+            lag_cols = ['days', 'original_c','rolling_mean_origin_7', 'rolling_mean_origin_14','rolling_mean_origin_21', 'rolling_mean_origin_28']
             train_dec_lags = train_dec[lag_cols].groupby(['days', 'original_c']).mean()
             train_dec_lags.rename(columns={'rolling_mean_7': 'rolling_mean_origin_7', 'rolling_mean_14': 'rolling_mean_origin_14'})
             train_dec_lags.reset_index(inplace=True)
-            self.train = pd.merge(left=self.train, right=train_dec_lags[['days','original_c','rolling_mean_origin_7','rolling_mean_origin_14']], how='left',
+            self.train = pd.merge(left=self.train, right=train_dec_lags[lag_cols], how='left',
                                   on=['days', 'original_c'])
         else:
             for i in [7, 14, 21, 28]:
@@ -1123,8 +1123,10 @@ class Features:
         self.get_rolling_means_origin()
         print("finish getting get_rolling_means_mcode data")
         print(self.train.shape, ": df shape")
-        self.get_lag_sales()
-        # self.get_lag_sales(not_divided = True)
+
+        ### not dividedd
+        # self.get_lag_sales()
+        self.get_lag_sales(not_divided = True)
         print("finish getting get_lag_sales data")
         print(self.train.shape, ": df shape")
         self.get_ts_pred()
@@ -1135,9 +1137,11 @@ class Features:
 
 
 t = Features()
-train = t.run_all()
-train.to_pickle("../data/20/train_fin_light_ver.pkl")
-# t =Features(test=True)
-# test_v2 = t.run_all()
+# train = t.run_all()
+# train.to_pickle("../data/20/train_v2.pkl")
+# train.to_pickle("../data/20/train_fin_light_ver.pkl")
+t =Features(test=True)
+test_v2 = t.run_all()
 # test_v2.to_pickle("../data/20/test_v2.pkl")
-# test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
+test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
+#
