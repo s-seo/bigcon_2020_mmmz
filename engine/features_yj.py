@@ -15,17 +15,17 @@ import json
 
 
 class Features:
-    def __init__(self, test=False):
+    def __init__(self, types):
         """
         :objective: load data and engineer features
         :param test: boolean  - whether to get test data. if false, we can work on raw train dataset(2019 sales)
         """
-        self.is_test = test
-        # load test data
-        if self.is_test:
+        self.type = types
+        
+        if self.type == 'hungarian':
+            df = pd.read_excel("../data/01/2020sales_opt_temp.xlsx")
+        elif self.type == 'test':
             df = pd.read_excel("../data/00/202006schedule.xlsx", skiprows=1)
- 
-        # load train data
         else:
             df = pd.read_csv("../data/00/2019sales.csv", skiprows=1)
             # adjust data types
@@ -47,6 +47,9 @@ class Features:
         # then 방송일시 works as index in ts_schedule
         self.ts_schedule = df.copy().groupby('방송일시').first()
         self.ts_schedule.reset_index(inplace=True)
+        
+    def get_df(self):
+        return self.train
 
     ##################################
     ## onair time/order info variables
@@ -97,7 +100,7 @@ class Features:
         :** objective: create a dummy variable for holidays (weekends + red)
         """
         holidays = []
-        if self.is_test:
+        if (self.type == 'test') | (self.type == 'hungarian'):
             holiday_dates = ['2020-06-06']
         else:
             holiday_dates = ['2019-01-01', '2019-02-04', '2019-02-05', '2019-02-06',
@@ -118,7 +121,7 @@ class Features:
         :** objective: create a dummy variable for just red
         """
         red = []
-        if self.is_test:
+        if (self.type == 'test') | (self.type == 'hungarian'):
             holiday_dates = ['2020-06-06']
         else:
             holiday_dates = ['2019-01-01', '2019-02-04', '2019-02-05', '2019-02-06',
@@ -310,7 +313,7 @@ class Features:
         """
         :objective: return 1 if its hour is within its small c's primetime
         """
-        if not self.is_test:
+        if self.type == 'train':
             # create table with top two sales hourly+small_c
             hours_smallc = self.train.groupby(['hours', 'small_c']) \
                 ['취급액'].sum().rename("tot_sales").groupby(level=0, group_keys=False)
@@ -337,7 +340,7 @@ class Features:
         :objective: get sales power of each product, sum(exposed time)/sum(sales volume)
                     will not be included in the final input
         """
-        if not self.is_test:
+        if self.type == 'train':
             # will not be calculated when creating test
             self.train['sales_power'] = 0
             # sum(exposed time)/sum(sold volume)
@@ -349,7 +352,7 @@ class Features:
         """
         :objective: identify frequently sold items by dummy variable "freq"
         """
-        if not self.is_test:
+        if self.type == 'train':
             # define top ten frequently sold items list
             freq_list = self.train.groupby('상품코드').show_id.nunique().sort_values(ascending=False).index[1:10]
             try:
@@ -366,7 +369,7 @@ class Features:
         """
         :objective: check if it is included in top 40(by total sales)
         """
-        if not self.is_test:
+        if self.type == 'train':
             # define top ten steady items list
             steady_list = self.train.groupby('상품코드') \
                               .apply(lambda x: sum(x.취급액) / x.show_id.nunique()).sort_values(ascending=False).index[
@@ -384,7 +387,7 @@ class Features:
         """
         :objective: identify items with low sales power(+) & high price
         """
-        if not self.is_test:
+        if self.type == 'train':
             # define top ten bpower items list
             bpower_list = self.train.마더코드.loc[(self.train.sales_power > self.train.sales_power.quantile(0.7)) &
                                               (self.train.판매단가 > self.train.판매단가.quantile(0.7))].unique()
@@ -465,7 +468,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0)|(self.is_test&(prev_wk == 22)):
+            if (prev_wk == 0)|((self.type == 'test') &(prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             groups = train_subset[['상품코드', '판매단가']].groupby(by='상품코드')
@@ -489,7 +492,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
+            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             grp = train_subset.groupby(by='상품코드').apply(lambda x: x.show_id.nunique())
@@ -512,7 +515,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
+            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             groups = train_subset[['마더코드', '판매단가']].groupby(by='마더코드')
@@ -536,7 +539,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
+            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             grp = train_subset.groupby(by='마더코드').apply(lambda x: x.show_id.nunique())
@@ -559,7 +562,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
+            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             groups = train_subset[['상품군', '판매단가']].groupby(by='상품군')
@@ -583,7 +586,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
+            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             grp = train_subset.groupby(by='상품군').apply(lambda x: x.show_id.nunique())
@@ -653,7 +656,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
+            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             groups = train_subset[['small_c', '판매단가']].groupby(by='small_c')
@@ -677,7 +680,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | (self.is_test & (prev_wk == 22)):
+            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             grp = train_subset.groupby(by='small_c').apply(lambda x: x.show_id.nunique())
@@ -729,8 +732,8 @@ class Features:
         :objective: get sales lag 1,2 for weekend cases and lag 1 to 5 for weekday cases; pointwisely
         :return: pd.DataFrame - including lag_sales_wk_i (i = 1,2), lag_sales_wd_i (i = 1,2,3,4,5)
         """
-        # use 2019-december data to get lag vars if self.is_test = True
-        if self.is_test:
+        # use 2019-december data to get lag vars if self.type == 'test'
+        if self.type == 'test':
             if not_divided:
                 full_train = pd.read_pickle("../data/20/train_fin_light_ver.pkl")
                 lag_cols = ['day_hour','lag_sales_1', 'lag_sales_2',
@@ -792,8 +795,8 @@ class Features:
         :param: df - pd.DataFrame
         :return: pd.DataFrme - including rolling_mean_i (i=7,14,21,28)
         """
-        # stack 2019-12 data to get lag vars if self.is_test = True
-        if self.is_test:
+        # stack 2019-12 data to get lag vars if self.type == 'test'
+        if self.type == 'test':
             full_train = pd.read_pickle("../data/20/train_v2.pkl")
             # extract only 2019-Dec data
             train_dec = full_train.loc[(full_train.months == 12)]
@@ -821,8 +824,8 @@ class Features:
         :param: df - pd.DataFrame
         :return: pd.DataFrme - including mean_sales_origin
         """
-        # stack 2019-12 data to get lag vars if self.is_test = True
-        if self.is_test:
+        # stack 2019-12 data to get lag vars if self.type == 'test'
+        if self.type == 'test':
             full_train = pd.read_pickle("../data/20/train_fin_light_ver.pkl")
             
             # extract 2019-Dec,June data
@@ -859,7 +862,7 @@ class Features:
         :objective: add category columns
         :return: pandas dataframe
         """
-        if self.is_test:
+        if self.type == 'test':
             categories = pd.read_excel("../data/01/2020sales_test_added.xlsx")
         else:
             categories = pd.read_excel("../data/01/2019sales_added.xlsx")
@@ -906,7 +909,7 @@ class Features:
         """
         :objective: create dummy vars(spring,summer,fall,winter) for seasonal items
         """
-        if self.is_test:
+        if self.type == 'test':
             with open("../data/11/seasonal_test.json", encoding='UTF8') as json_file:
                 seasonal_items = json.load(json_file)
         else:
@@ -997,7 +1000,7 @@ class Features:
         """
         :objective: get weather(rain, temp_diff info)
         """
-        if self.is_test:
+        if self.type == 'test':
             weather = pd.read_excel("../data/11/weather_diff_test.xlsx")
             weather.ymd = pd.to_datetime(weather.ymd, format="%Y-%m-%d")
         else:
@@ -1019,7 +1022,7 @@ class Features:
         :objective: drop na rows and 취급액 == 50000(train)
                     drop rows with 판매단가 == 0(test)
         """
-        if self.is_test:
+        if self.type == 'test':
             self.train = self.train[self.train['판매단가'] != 0]
         else:
             self.train = self.train[self.train['취급액'].notna()]
@@ -1121,7 +1124,7 @@ class Features:
         #
         ### not dividedd
         # self.get_lag_sales()
-        self.get_lag_sales(not_divided = True)
+        self.get_lag_sales(not_divided = False)
         print("finish getting get_lag_sales data")
         print(self.train.shape, ": df shape")
         self.get_ts_pred()
@@ -1135,7 +1138,7 @@ class Features:
 # train = t.run_all()
 # train.to_pickle("../data/20/train_v2.pkl")
 # train.to_pickle("../data/20/train_fin_light_ver.pkl")
-t =Features(test=True)
+t =Features(types = 'test')
 test_v2 = t.run_all()
 # test_v2.to_pickle("../data/20/test_v2.pkl")
 test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
