@@ -788,9 +788,9 @@ class Features:
 
     def get_rolling_means(self):
         """
-        :objective: compute rolling means by 상품군 for 7/14 days
+        :objective: compute rolling means by 상품군 for 7/14/21/28 days
         :param: df - pd.DataFrame
-        :return: pd.DataFrme - including rolling_mean_i (i=7,14)
+        :return: pd.DataFrme - including rolling_mean_i (i=7,14,21,28)
         """
         # stack 2019-12 data to get lag vars if self.is_test = True
         if self.is_test:
@@ -817,9 +817,9 @@ class Features:
 
     def get_mean_sales_origin(self):
         """
-        :objective: compute rolling means by original code for 7/14 days
+        :objective: compute mean sales of original codes for each months 
         :param: df - pd.DataFrame
-        :return: pd.DataFrme - including rolling_mean_i (i=7,14)
+        :return: pd.DataFrme - including mean_sales_origin
         """
         # stack 2019-12 data to get lag vars if self.is_test = True
         if self.is_test:
@@ -1121,7 +1121,7 @@ class Features:
         #
         ### not dividedd
         # self.get_lag_sales()
-        self.get_lag_sales(not_divided = False)
+        self.get_lag_sales(not_divided = True)
         print("finish getting get_lag_sales data")
         print(self.train.shape, ": df shape")
         self.get_ts_pred()
@@ -1137,6 +1137,6 @@ class Features:
 # train.to_pickle("../data/20/train_fin_light_ver.pkl")
 t =Features(test=True)
 test_v2 = t.run_all()
-test_v2.to_pickle("../data/20/test_v2.pkl")
-# test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
+# test_v2.to_pickle("../data/20/test_v2.pkl")
+test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
 #
