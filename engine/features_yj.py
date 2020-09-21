@@ -768,7 +768,7 @@ class Features:
         :return: pd.DataFrame - including lag_sales_wk_i (i = 1,2), lag_sales_wd_i (i = 1,2,3,4,5)
         """
         # use 2019-december data to get lag vars if self.type == 'test'
-        if self.type == 'test':
+        if (self.type == 'test') | (self.type == 'hungarian'):
             if not_divided:
                 full_train = pd.read_pickle("../data/20/train_fin_light_ver.pkl")
                 lag_cols = ['day_hour','lag_sales_1', 'lag_sales_2',
@@ -778,18 +778,51 @@ class Features:
                 lag_cols = ['day_hour', 'lag_sales_wd_1', 'lag_sales_wd_2',
                             'lag_sales_wd_3', 'lag_sales_wd_4', 'lag_sales_wd_5', 'lag_sales_wk_1',
                             'lag_sales_wk_2']
-            # extract only 2019-dec data
-            train_dec = full_train.loc[full_train.months == 12]. \
-                sort_values(['방송일시'])
+                
+            # extract 2019-dec data
+            train_dec = full_train.loc[(full_train.months == 12)]
+            train_dec.loc[train_dec.상품군 == '건강기능'].취급액 = 1.112*(train_dec.loc[train_dec.상품군 == '건강기능'].취급액)
+            train_dec.loc[train_dec.상품군 == '농수축'].취급액 = 1.141*(train_dec.loc[train_dec.상품군 == '농수축'].취급액)
+            train_dec.loc[train_dec.상품군 == '이미용'].취급액 = 0.994*(train_dec.loc[train_dec.상품군 == '이미용'].취급액)
+            train_dec.loc[train_dec.상품군 == '의류'].취급액 = 0.792*(train_dec.loc[train_dec.상품군 == '의류'].취급액)
+            train_dec.loc[train_dec.상품군 == '속옷'].취급액 = 0.792*(train_dec.loc[train_dec.상품군 == '속옷'].취급액)
+            train_dec.loc[train_dec.상품군 == '잡화'].취급액 = 1.357*(train_dec.loc[train_dec.상품군 == '잡화'].취급액)
+            train_dec.loc[train_dec.상품군 == '생활용품'].취급액 = 1.357*(train_dec.loc[train_dec.상품군 == '생활용품'].취급액)
+            train_dec.loc[train_dec.상품군 == '가전'].취급액 = 1.227*(train_dec.loc[train_dec.상품군 == '가전'].취급액)
+            train_dec.loc[train_dec.상품군 == '주방'].취급액 = 1.227*(train_dec.loc[train_dec.상품군 == '주방'].취급액)
+            train_dec.loc[train_dec.상품군 == '침구'].취급액 = 0.665*(train_dec.loc[train_dec.상품군 == '침구'].취급액)
+            train_dec.loc[train_dec.상품군 == '가구'].취급액 = 0.665*(train_dec.loc[train_dec.상품군 == '가구'].취급액)
+
+            # extract 2019-jun data
+            train_jun = full_train.loc[(full_train.months == 6) | ((full_train.months == 7)  & (full_train.days.isin([1,2])))]
+            train_jun.loc[train_jun.상품군 == '건강기능'].취급액 = 1.12*(train_jun.loc[train_jun.상품군 == '건강기능'].취급액)
+            train_jun.loc[train_jun.상품군 == '농수축'].취급액 = 1.307*(train_jun.loc[train_jun.상품군 == '농수축'].취급액)
+            train_jun.loc[train_jun.상품군 == '이미용'].취급액 = 0.897*(train_jun.loc[train_jun.상품군 == '이미용'].취급액)
+            train_jun.loc[train_jun.상품군 == '의류'].취급액 = 0.752*(train_jun.loc[train_jun.상품군 == '의류'].취급액)
+            train_jun.loc[train_jun.상품군 == '속옷'].취급액 = 0.752*(train_jun.loc[train_jun.상품군 == '속옷'].취급액)
+            train_jun.loc[train_jun.상품군 == '잡화'].취급액 = 1.351*(train_jun.loc[train_jun.상품군 == '잡화'].취급액)
+            train_jun.loc[train_jun.상품군 == '생활용품'].취급액 = 1.351*(train_jun.loc[train_jun.상품군 == '생활용품'].취급액)
+            train_jun.loc[train_jun.상품군 == '가전'].취급액 = 0.946*(train_jun.loc[train_jun.상품군 == '가전'].취급액)
+            train_jun.loc[train_jun.상품군 == '주방'].취급액 = 0.946*(train_jun.loc[train_jun.상품군 == '주방'].취급액)
+            train_jun.loc[train_jun.상품군 == '침구'].취급액 = 1.052*(train_jun.loc[train_jun.상품군 == '침구'].취급액)
+            train_jun.loc[train_jun.상품군 == '가구'].취급액 = 1.052*(train_jun.loc[train_jun.상품군 == '가구'].취급액)
+
             # define new 'day_hour' column to match df
             # lag values of train_dec will be injected by day_hour
             # need to extract one day from december data since Dec 1st is Sunday but June 1st is Monday
             train_dec['day_hour'] = (train_dec.days - 1).astype(str) + '/' + train_dec.hours.astype(str)
+            train_jun['day_hour'] = (train_jun.days - 2).astype(str) + '/' + train_jun.hours.astype(str)
             self.train['day_hour'] = self.train.days.astype(str) + '/' + self.train.hours.astype(str)
-
+            
             train_dec_lags = train_dec[lag_cols].groupby(['day_hour']).mean()
             train_dec_lags.reset_index(inplace=True)
-            self.train = pd.merge(left=self.train, right=train_dec_lags[lag_cols], how='left',
+            train_jun_lags = train_jun[lag_cols].groupby(['day_hour']).mean()
+            train_jun_lags.reset_index(inplace=True)
+            
+            train_lags = pd.concat([train_dec_lags, train_jun_lags]).groupby('day_hour').mean()
+            train_lags.reset_index(inplace=True)
+           
+            self.train = pd.merge(left=self.train, right=train_lags[lag_cols], how='left',
                                  on=['day_hour'])
             self.train.drop(['day_hour'], axis=1, inplace=True)
 
@@ -831,16 +864,52 @@ class Features:
         :return: pd.DataFrme - including rolling_mean_i (i=7,14,21,28)
         """
         # stack 2019-12 data to get lag vars if self.type == 'test'
-        if self.type == 'test':
+        if (self.type == 'test') | (self.type == 'hungarian'):
             full_train = pd.read_pickle("../data/20/train_v2.pkl")
-            # extract only 2019-Dec data
+            
+            # extract 2019-dec data
             train_dec = full_train.loc[(full_train.months == 12)]
+            train_dec.loc[train_dec.상품군 == '건강기능'].취급액 = 1.112*(train_dec.loc[train_dec.상품군 == '건강기능'].취급액)
+            train_dec.loc[train_dec.상품군 == '농수축'].취급액 = 1.141*(train_dec.loc[train_dec.상품군 == '농수축'].취급액)
+            train_dec.loc[train_dec.상품군 == '이미용'].취급액 = 0.994*(train_dec.loc[train_dec.상품군 == '이미용'].취급액)
+            train_dec.loc[train_dec.상품군 == '의류'].취급액 = 0.792*(train_dec.loc[train_dec.상품군 == '의류'].취급액)
+            train_dec.loc[train_dec.상품군 == '속옷'].취급액 = 0.792*(train_dec.loc[train_dec.상품군 == '속옷'].취급액)
+            train_dec.loc[train_dec.상품군 == '잡화'].취급액 = 1.357*(train_dec.loc[train_dec.상품군 == '잡화'].취급액)
+            train_dec.loc[train_dec.상품군 == '생활용품'].취급액 = 1.357*(train_dec.loc[train_dec.상품군 == '생활용품'].취급액)
+            train_dec.loc[train_dec.상품군 == '가전'].취급액 = 1.227*(train_dec.loc[train_dec.상품군 == '가전'].취급액)
+            train_dec.loc[train_dec.상품군 == '주방'].취급액 = 1.227*(train_dec.loc[train_dec.상품군 == '주방'].취급액)
+            train_dec.loc[train_dec.상품군 == '침구'].취급액 = 0.665*(train_dec.loc[train_dec.상품군 == '침구'].취급액)
+            train_dec.loc[train_dec.상품군 == '가구'].취급액 = 0.665*(train_dec.loc[train_dec.상품군 == '가구'].취급액)
+            
+            # extract 2019-jun data
+            train_jun = full_train.loc[(full_train.months == 6) | ((full_train.months == 7)  & (full_train.days.isin([1,2])))]
+            train_jun.loc[train_jun.상품군 == '건강기능'].취급액 = 1.12*(train_jun.loc[train_jun.상품군 == '건강기능'].취급액)
+            train_jun.loc[train_jun.상품군 == '농수축'].취급액 = 1.307*(train_jun.loc[train_jun.상품군 == '농수축'].취급액)
+            train_jun.loc[train_jun.상품군 == '이미용'].취급액 = 0.897*(train_jun.loc[train_jun.상품군 == '이미용'].취급액)
+            train_jun.loc[train_jun.상품군 == '의류'].취급액 = 0.752*(train_jun.loc[train_jun.상품군 == '의류'].취급액)
+            train_jun.loc[train_jun.상품군 == '속옷'].취급액 = 0.752*(train_jun.loc[train_jun.상품군 == '속옷'].취급액)
+            train_jun.loc[train_jun.상품군 == '잡화'].취급액 = 1.351*(train_jun.loc[train_jun.상품군 == '잡화'].취급액)
+            train_jun.loc[train_jun.상품군 == '생활용품'].취급액 = 1.351*(train_jun.loc[train_jun.상품군 == '생활용품'].취급액)
+            train_jun.loc[train_jun.상품군 == '가전'].취급액 = 0.946*(train_jun.loc[train_jun.상품군 == '가전'].취급액)
+            train_jun.loc[train_jun.상품군 == '주방'].취급액 = 0.946*(train_jun.loc[train_jun.상품군 == '주방'].취급액)
+            train_jun.loc[train_jun.상품군 == '침구'].취급액 = 1.052*(train_jun.loc[train_jun.상품군 == '침구'].취급액)
+            train_jun.loc[train_jun.상품군 == '가구'].취급액 = 1.052*(train_jun.loc[train_jun.상품군 == '가구'].취급액)
+            
             train_dec.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
             train_dec['days'] = train_dec.days - 1
             lag_cols = ['days', '상품군', 'rolling_mean_7', 'rolling_mean_14', 'rolling_mean_21', 'rolling_mean_28']
             train_dec_lags = train_dec[lag_cols].groupby(['days', '상품군']).mean()
             train_dec_lags.reset_index(inplace=True)
-            self.train = pd.merge(left=self.train, right=train_dec_lags[lag_cols], how='left',
+
+            train_jun.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+            train_jun['days'] = train_jun.days - 2
+            train_jun_lags = train_jun[lag_cols].groupby(['days', '상품군']).mean()
+            train_jun_lags.reset_index(inplace=True)
+            
+            train_lags = pd.concat([train_dec_lags, train_jun_lags]).groupby(['days', '상품군']).mean()
+            train_lags.reset_index(inplace=True)
+           
+            self.train = pd.merge(left=self.train, right=train_lags[lag_cols], how='left',
                                   on=['days', '상품군'])
         else:
             for i in [7, 14, 21, 28]:
@@ -860,8 +929,51 @@ class Features:
         :return: pd.DataFrme - including mean_sales_origin
         """
         # stack 2019-12 data to get lag vars if self.type == 'test'
-        if self.type == 'test':
+        if (self.type == 'test') | (self.type == 'hungarian'):
             full_train = pd.read_pickle("../data/20/train_fin_light_ver.pkl")
+            # extract 2019-dec data
+            train_dec = full_train.loc[(full_train.months == 12)]
+            train_dec.loc[train_dec.상품군 == '건강기능'].취급액 = 1.112*(train_dec.loc[train_dec.상품군 == '건강기능'].취급액)
+            train_dec.loc[train_dec.상품군 == '농수축'].취급액 = 1.141*(train_dec.loc[train_dec.상품군 == '농수축'].취급액)
+            train_dec.loc[train_dec.상품군 == '이미용'].취급액 = 0.994*(train_dec.loc[train_dec.상품군 == '이미용'].취급액)
+            train_dec.loc[train_dec.상품군 == '의류'].취급액 = 0.792*(train_dec.loc[train_dec.상품군 == '의류'].취급액)
+            train_dec.loc[train_dec.상품군 == '속옷'].취급액 = 0.792*(train_dec.loc[train_dec.상품군 == '속옷'].취급액)
+            train_dec.loc[train_dec.상품군 == '잡화'].취급액 = 1.357*(train_dec.loc[train_dec.상품군 == '잡화'].취급액)
+            train_dec.loc[train_dec.상품군 == '생활용품'].취급액 = 1.357*(train_dec.loc[train_dec.상품군 == '생활용품'].취급액)
+            train_dec.loc[train_dec.상품군 == '가전'].취급액 = 1.227*(train_dec.loc[train_dec.상품군 == '가전'].취급액)
+            train_dec.loc[train_dec.상품군 == '주방'].취급액 = 1.227*(train_dec.loc[train_dec.상품군 == '주방'].취급액)
+            train_dec.loc[train_dec.상품군 == '침구'].취급액 = 0.665*(train_dec.loc[train_dec.상품군 == '침구'].취급액)
+            train_dec.loc[train_dec.상품군 == '가구'].취급액 = 0.665*(train_dec.loc[train_dec.상품군 == '가구'].취급액)
+            
+            # extract 2019-jun data
+            train_jun = full_train.loc[(full_train.months == 6) | ((full_train.months == 7)  & (full_train.days.isin([1,2])))]
+            train_jun.loc[train_jun.상품군 == '건강기능'].취급액 = 1.12*(train_jun.loc[train_jun.상품군 == '건강기능'].취급액)
+            train_jun.loc[train_jun.상품군 == '농수축'].취급액 = 1.307*(train_jun.loc[train_jun.상품군 == '농수축'].취급액)
+            train_jun.loc[train_jun.상품군 == '이미용'].취급액 = 0.897*(train_jun.loc[train_jun.상품군 == '이미용'].취급액)
+            train_jun.loc[train_jun.상품군 == '의류'].취급액 = 0.752*(train_jun.loc[train_jun.상품군 == '의류'].취급액)
+            train_jun.loc[train_jun.상품군 == '속옷'].취급액 = 0.752*(train_jun.loc[train_jun.상품군 == '속옷'].취급액)
+            train_jun.loc[train_jun.상품군 == '잡화'].취급액 = 1.351*(train_jun.loc[train_jun.상품군 == '잡화'].취급액)
+            train_jun.loc[train_jun.상품군 == '생활용품'].취급액 = 1.351*(train_jun.loc[train_jun.상품군 == '생활용품'].취급액)
+            train_jun.loc[train_jun.상품군 == '가전'].취급액 = 0.946*(train_jun.loc[train_jun.상품군 == '가전'].취급액)
+            train_jun.loc[train_jun.상품군 == '주방'].취급액 = 0.946*(train_jun.loc[train_jun.상품군 == '주방'].취급액)
+            train_jun.loc[train_jun.상품군 == '침구'].취급액 = 1.052*(train_jun.loc[train_jun.상품군 == '침구'].취급액)
+            train_jun.loc[train_jun.상품군 == '가구'].취급액 = 1.052*(train_jun.loc[train_jun.상품군 == '가구'].취급액)
+
+            train_dec.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+            train_dec['days'] = train_dec.days - 1
+            lag_cols = ['days', '상품군', 'rolling_mean_7', 'rolling_mean_14', 'rolling_mean_21', 'rolling_mean_28']
+            train_dec_lags = train_dec[lag_cols].groupby(['days', '상품군']).mean()
+            train_dec_lags.reset_index(inplace=True)
+
+            train_jun.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+            train_jun['days'] = train_jun.days - 2
+            train_jun_lags = train_jun[lag_cols].groupby(['days', '상품군']).mean()
+            train_jun_lags.reset_index(inplace=True)
+
+            history_sales_lags = pd.concat([train_dec_lags, train_jun_lags])[['original_c', '취급액']].groupby(['original_c']).취급액.mean()
+            history_sales_lags.reset_index(inplace=True)
+            
+            self.train = pd.merge(left=self.train, right=history_sales_lags, on='original_c', how="left")
             
             # extract 2019-Dec,June data
             history_sales = full_train.loc[(full_train.months == 12)|(full_train.months == 6)]
@@ -899,13 +1011,14 @@ class Features:
         """
         if self.type == 'test':
             categories = pd.read_excel("../data/01/2020sales_test_added.xlsx")
-        else:
+        elif self.type == 'train':
             categories = pd.read_excel("../data/01/2019sales_added.xlsx")
             categories.rename(columns={' 취급액 ': '취급액'}, inplace=True)
         categories.상품코드 = categories.상품코드.dropna().astype(int).astype(str).str.zfill(6)
         categories.방송일시 = pd.to_datetime(categories.방송일시, format="%Y/%m/%d %H:%M")
         categories.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
-
+        
+        if not self.type == 'hungarian':
         self.train = pd.merge(left=self.train,
                               right=categories[
                                   ['방송일시', '상품코드', 'small_c', 'small_c_code', 'middle_c', 'middle_c_code', 'big_c',
@@ -944,7 +1057,7 @@ class Features:
         """
         :objective: create dummy vars(spring,summer,fall,winter) for seasonal items
         """
-        if self.type == 'test':
+        if (self.type == 'test') | (self.type == 'hungarian'):
             with open("../data/11/seasonal_test.json", encoding='UTF8') as json_file:
                 seasonal_items = json.load(json_file)
         else:
@@ -1035,7 +1148,7 @@ class Features:
         """
         :objective: get weather(rain, temp_diff info)
         """
-        if self.type == 'test':
+        if (self.type == 'test') | (self.type == 'hungarian'):
             weather = pd.read_excel("../data/11/weather_diff_test.xlsx")
             weather.ymd = pd.to_datetime(weather.ymd, format="%Y-%m-%d")
         else:
@@ -1177,4 +1290,4 @@ class Features:
 # # test_v2 = t.run_all()
 # # test_v2.to_pickle("../data/20/test_v2.pkl")
 # # # test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
-# # #
+#
