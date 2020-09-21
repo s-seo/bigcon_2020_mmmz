@@ -86,7 +86,8 @@ lag_col1 = ['lag_scode_count','lag_mcode_price','lag_mcode_count','lag_bigcat_pr
 
 lag_col2 = ['rolling_mean_7', 'rolling_mean_14', 'lag_sales_wd_1', 'lag_sales_wd_2','lag_sales_wd_3',
             'lag_sales_wd_4', 'lag_sales_wd_5', 'lag_sales_wk_1','lag_sales_wk_2', 'ts_pred',
-           'rolling_mean_mcode_7','rolling_mean_mcode_14',]
+           'rolling_mean_mcode_7','rolling_mean_mcode_14',
+           'rolling_mean_origin_7', 'rolling_mean_origin_14','rolling_mean_origin_21', 'rolling_mean_origin_28']
 
 num_col = ['']
 
@@ -154,7 +155,7 @@ def run_preprocess(df, pca = True, replace = True):
     """
     df = drop_useless(df)
     df = na_to_zeroes(df)
-    df = remove_outliers(df)
+    #df = remove_outliers(df)
     df = run_label_all(df)
     df1 = df.copy()
     if pca:
@@ -243,13 +244,10 @@ def divide_train_val(df_pp, month, drop):
     val_y = df_wd_lag_PP.iloc[split:,:].취급액
     return train_x, train_y, val_x, val_y
 
-
+## set month
 train_x, train_y, val_x, val_y = divide_train_val(df_wd_lag_PP, 8, drop = ['small_c'])
 train_x.shape
-
-
-
-
+val_y.shape
 
 ###############################################################################
 ########################### Light GBM ##############################
@@ -298,7 +296,7 @@ def run_lgbm(train_x, train_y, val_x, val_y):
     print(f'MAE of best iter is {get_mae(val_y,lgbm_preds)}')
     print(f'RMSE of best iter is {get_rmse(val_y,lgbm_preds)}')
 
-    # feature Importance
+    #feature Importance
     #fi = {'name' : estimator.feature_name_,'importance': estimator.feature_importances_}
     #fi = pd.DataFrame(fi, columns = ['name','importance'])
     #fi.sort_values(by=['importance'], inplace=True, ascending = False)
@@ -331,21 +329,25 @@ baseline_model = make_fast_test(train_x, train_y, val_x, val_y)
 
 
 # run for each cv
-cv_months = [7,8,9]
+cv_months = [8]
 
 for num in cv_months:
     month = num
-    train_x, train_y, val_x, val_y = divide_train_val(df_wd_lag_PP, month, drop = ['small_c'])
+    train_x, train_y, val_x, val_y = divide_train_val(df_wd_lag_PP, month, drop = [])
     print(f'CV with month {month} is starting.')
-    run_lgbm(train_x, train_y, val_x, val_y)
+    fii = run_lgbm(train_x, train_y, val_x, val_y)
+
+fii.iloc[40:,:]
 
 
-
-
-
-
-
-
+estimator = gbm.fit(train_x,train_y,
+                    eval_set=[(val_x, val_y)],
+                    verbose = 100,
+                    eval_metric = 'mape',
+                    early_stopping_rounds = 100
+                    )
+lgbm_preds = gbm.predict(val_x, num_iteration= estimator.best_iteration_)
+lgbm_preds[lgbm_preds < 0] = 0
 
 ########################### Hyperparameter Tuning
 ###############################################################################
@@ -459,26 +461,123 @@ save_model_weights
 
 
 
-
 ###############################################################################
 ########################### Ensemble ##############################
 ###############################################################################
-lgbm_preds
-keras_preds
-
-# 판매단가 기준
-# grid search
-def set_threshold:
-
-for num in thresholds:
+middle_preds=
+small_preds=
+big_preds=
 
 
-MAPE
-mae
+temp = val_y
+percentile(price,[70,90,95])
+final_preds =[]
+for i in x:
+    price1 = temp.iloc[i]
+    if price1<6080073:
+        final_preds.append(small_preds_71[i])
+    elif 6080073<=price1<37064231:
+        final_preds.append(middle_preds_81[i])
+    else:
+        final_preds.append(big_preds_[i])
+
+x = range(0,val_y.shape[0])
+plt.figure(figsize=(50,10))
+plt.plot(x,val_y,label='true')
+plt.plot(x,final_preds, label='pred')
+plt.legend()
+
+plt.show()
+neg_mape(val_y,final_preds)
+neg_mape(val_y,small_preds_71)
+
+
+
+
+
+
 
 
 ###############################################################################
 ########################### Predict ##############################
 ###############################################################################
 
-submission = pd.Dataframe()
+
+
+
+
+########################### LGBM
+###############################################################################
+
+## Create Dummy DataFrame to store predictions
+# all_preds = pd.DataFrame()
+test_x
+model_path = MODELS_DIR+'lgbm_model_name.bin'
+estimator = pickle.load(open(model_path, 'rb'))
+lgbm_preds = estimator.predict(test_x)
+
+#### load sample submission and save
+valDF = pd.read_csv(ORIGINAL+'sample_submission.csv')
+valDF = valDF.merge(lgbm_preds, on= , how='left')
+valDF.to_csv(SUBMISSION_DIR+'lgbm_final_VER.csv',index=False)
+
+val_predsDF_lgbm=valDF.copy()
+
+
+
+
+########################### KERAS
+###############################################################################
+base_epochs=30
+val_x =
+
+# numerical cols
+num_cols = [  "sell_price",
+              "sell_price_rel_diff",
+              "rolling_mean_28_7",
+              "rolling_mean_28_28",
+              "rolling_median_28_7",
+              "rolling_median_28_28",
+              "logd"
+
+           ]
+bool_cols = ["snap_CA", "snap_TX", "snap_WI"]
+dense_cols = num_cols + bool_cols
+cat_cols = cat_id_cols + ["wday", "month", "year", "event_name_1",
+                          "event_type_1", "event_name_2", "event_type_2"]
+
+# Input dict for training with a dense array and separate inputs for each embedding input
+def make_X(df):
+    X = {"dense1": df[dense_cols].values}
+    for i, v in enumerate(cat_cols):
+        X[v] = df[[v]].values
+    return X
+
+forecast = make_X(test_x)
+forecast['dense1'], scaler = preprocess_data(forecast['dense1'], scaler1)
+
+model.load_weights(MODELS_DIR+'Keras_model_name.h5')
+keras_preds = model.predict(forecast, batch_size=2 ** 14)
+for j in range(1,5):
+    model.load_weights(MODELS_DIR+'Keras_model_name_et.h5')
+    keras_preds += model.predict(forecast, batch_size=2 ** 14)
+keras_preds /= 5
+
+valDF2 = pd.read_csv(ORIGINAL+'sample_submission.csv')
+valDF2 = valDF2.merge(keras_preds, on= , how='left')
+valDF2.to_csv(SUBMISSION_DIR+'keras_final_VER.csv',index=False)
+
+val_predsDF_keras=valDF2.copy()
+
+
+
+
+########################### ENSEMBLE
+###############################################################################
+
+# Submissions for M5 accuracy competition, used as starting point to M5 uncertainty
+final_preds_acc = val_predsDF_lgbm.copy()
+final_preds_acc.iloc[:,1:] = (val_predsDF_lgbm.iloc[:,1:]**3 * val_predsDF.iloc[:,1:]) ** (1/4)
+
+#final_preds_acc.iloc[:,-1] = val_predsDF_lgbm.iloc[:,-1].values
+final_preds_acc.to_csv(SUBMISSION_DIR+'lgbm3keras1.csv',index=False)
