@@ -1019,11 +1019,10 @@ class Features:
         categories.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
         
         if not self.type == 'hungarian':
-        self.train = pd.merge(left=self.train,
-                              right=categories[
-                                  ['방송일시', '상품코드', 'small_c', 'small_c_code', 'middle_c', 'middle_c_code', 'big_c',
-                                   'big_c_code', 'original_c']],
-                              how='left', on=['방송일시', '상품코드'], sort=False)
+            self.train = pd.merge(left=self.train, right=categories[['방송일시', '상품코드', 'small_c', 'small_c_code',
+                                                                     'middle_c', 'middle_c_code', 'big_c',
+                                                                     'big_c_code', 'original_c']],
+                                        how='left', on=['방송일시', '상품코드'], sort=False)
 
     def add_vratings(self):
         """
