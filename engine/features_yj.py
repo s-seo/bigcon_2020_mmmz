@@ -53,6 +53,9 @@ class Features:
     def get_df(self):
         return self.train
 
+    def get_schedule(self):
+        return self.ts_schedule
+
     ##################################
     ## onair time/order info variables
     ##################################
@@ -356,7 +359,7 @@ class Features:
         """
         if self.type == 'train':
             # define top ten frequently sold items list
-            freq_list = self.train.groupby('상품코드').show_id.nunique().sort_values(ascending=False).index[1:10]
+            freq_list = self.train.groupby('마더코드').show_id.nunique().sort_values(ascending=False).index[1:100]
             try:
                 # write pickle file to be used later (when creating test)
                 pd.DataFrame(freq_list).to_pickle("../data/12/freq_list.pkl")
@@ -364,8 +367,10 @@ class Features:
                 print("fail to write pickle")
         else:
             freq_list = pd.read_pickle("../data/12/freq_list.pkl")
+            freq_list = freq_list['마더코드']
+            freq_list = freq_list.to_list()
         self.train['freq'] = 0
-        self.train.freq.loc[self.train.상품코드.isin(freq_list)] = 1
+        self.train.freq.loc[self.train.마더코드.isin(freq_list)] = 1
 
     def check_steady_sellers(self):
         """
@@ -373,17 +378,18 @@ class Features:
         """
         if self.type == 'train':
             # define top ten steady items list
-            steady_list = self.train.groupby('상품코드') \
-                              .apply(lambda x: sum(x.취급액) / x.show_id.nunique()).sort_values(ascending=False).index[
-                          1:40]
+            steady_list = self.train.groupby('마더코드') \
+                              .apply(lambda x: sum(x.취급액) / x.show_id.nunique()).sort_values(ascending=False).index[1:100]
             try:
                 pd.DataFrame(steady_list).to_pickle("../data/12/steady_list.pkl")
             except:
                 print("fail to write pickle")
         else:
             steady_list = pd.read_pickle("../data/12/steady_list.pkl")
+            steady_list = steady_list['마더코드']
+            steady_list = steady_list.to_list()
         self.train['steady'] = 0
-        self.train.steady.loc[self.train.상품코드.isin(steady_list)] = 1
+        self.train.steady.loc[self.train.마더코드.isin(steady_list)] = 1
 
     def check_brand_power(self):
         """
@@ -399,6 +405,9 @@ class Features:
                 print("fail to write pickle")
         else:
             bpower_list = pd.read_pickle("../data/12/bpower_list.pkl")
+            bpower_list = bpower_list.loc[:,0]
+            bpower_list = bpower_list.to_list()
+
         self.train['bpower'] = 0
         self.train.bpower.loc[self.train.마더코드.isin(bpower_list)] = 1
 
@@ -1136,12 +1145,12 @@ class Features:
         return self.train
 
 
-# t = Features()
+# t = Features(types = "train")
 # train = t.run_all()
 # train.to_pickle("../data/20/train_v2.pkl")
-# train.to_pickle("../data/20/train_fin_light_ver.pkl")
-# t =Features(types = 'test')
-# test_v2 = t.run_all()
-# test_v2.to_pickle("../data/20/test_v2.pkl")
+# # train.to_pickle("../data/20/train_fin_light_ver.pkl")
+t =Features(types = 'test')
+test_v2 = t.run_all()
+test_v2.to_pickle("../data/20/test_v2.pkl")
 # test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
 #
