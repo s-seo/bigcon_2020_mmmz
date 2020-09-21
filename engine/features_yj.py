@@ -212,70 +212,94 @@ class Features:
         """
         :objective: add 'ymd' variable to dataset
         """
-        t = 1
-        while t < 9:
-            for i in self.ts_schedule.ymd.unique():
-                if (i == datetime.date(2019, 1, 1)) | (i == datetime.date(2020, 6, 1)): continue
-                time_idx = self.ts_schedule[self.ts_schedule.ymd == i].index[0]
-                first_show = self.ts_schedule.iloc[time_idx]
-                last_show = self.ts_schedule.iloc[time_idx - 1]
-                if (first_show['마더코드'] == last_show['마더코드']) & (
-                        first_show['방송일시'] <= last_show['방송일시'] + datetime.timedelta(minutes=last_show['exposed'])):
-                    self.ts_schedule.ymd.iloc[time_idx] = self.ts_schedule.ymd.iloc[time_idx - 1]
+        if self.type != "hungarian":
+            t = 1
+            while t < 9:
+                for i in self.ts_schedule.ymd.unique():
+                    if (i == datetime.date(2019, 1, 1)) | (i == datetime.date(2020, 6, 1)): continue
+                    time_idx = self.ts_schedule[self.ts_schedule.ymd == i].index[0]
+                    first_show = self.ts_schedule.iloc[time_idx]
+                    last_show = self.ts_schedule.iloc[time_idx - 1]
+                    if (first_show['마더코드'] == last_show['마더코드']) & (
+                            first_show['방송일시'] <= last_show['방송일시'] + datetime.timedelta(minutes=last_show['exposed'])):
+                        self.ts_schedule.ymd.iloc[time_idx] = self.ts_schedule.ymd.iloc[time_idx - 1]
 
-            t = t + 1
+                t = t + 1
 
     def timeslot(self):
         """
         :objective: get timeslot of each show
         """
-        show_counts = [len(list(y)) for x, y in itertools.groupby(self.ts_schedule.상품코드)]  # count repeated 상품코드
-        self.ts_schedule['parttime'] = ""  # define empty column
-        j = 0
-        for i in range(0, len(show_counts)):
-            first_idx = j
-            self.ts_schedule.parttime[first_idx] = 1
-            j += show_counts[i]
-            if show_counts[i] == 1:
-                next
-            self.ts_schedule.parttime[(first_idx + 1):j] = np.arange(2, show_counts[i] + 1)
+        if self.type == "hungarian":
+            self.train['parttime'] = 1
+            self.train['parttime'] = self.train.groupby(['상품코드', 'ymd', 'hours']).parttime.cumsum()
 
-        self.train['parttime'] = ""  # define empty column
-        # add timeslot variable to train dataset
-        for i in range(0, len(self.ts_schedule)):
-            self.train.parttime[self.train.방송일시 == self.ts_schedule.방송일시[i]] = self.ts_schedule.parttime[i]
+        else:
+            show_counts = [len(list(y)) for x, y in itertools.groupby(self.ts_schedule.상품코드)]  # count repeated 상품코드
+            self.ts_schedule['parttime'] = ""  # define empty column
+            j = 0
+            for i in range(0, len(show_counts)):
+                first_idx = j
+                self.ts_schedule.parttime[first_idx] = 1
+                j += show_counts[i]
+                if show_counts[i] == 1:
+                    next
+                self.ts_schedule.parttime[(first_idx + 1):j] = np.arange(2, show_counts[i] + 1)
+
+            self.train['parttime'] = ""  # define empty column
+            # add timeslot variable to train dataset
+            for i in range(0, len(self.ts_schedule)):
+                self.train.parttime[self.train.방송일시 == self.ts_schedule.방송일시[i]] = self.ts_schedule.parttime[i]
 
     def get_show_id(self):
         """
         :objective: get show id for each day
         :return: pandas dataframe
         """
-        self.ts_schedule['show_counts'] = ""
-        for i in self.ts_schedule.ymd.unique():
-            rtn = self.ts_schedule[self.ts_schedule.ymd == i]
-            slot_count = 0  # number of shows for each day
-            for j in range(0, len(rtn)):
-                if rtn['parttime'].iloc[j] == 1:
-                    slot_count += 1
-                    idx = self.ts_schedule[self.ts_schedule.ymd == i].index[j]
-                    self.ts_schedule.show_counts.iloc[idx] = str(i) + " " + str(slot_count)
+        if self.type == "hungarian":
+            tmp = self.train.iloc[:1791] #total time sequence of each product
+            tmp['show_counts'] = np.nan
+            for i in tmp.ymd.unique():
+                rtn = tmp[tmp.ymd == i]
+                slot_count = 0  # number of shows for each day
+                for j in range(0, len(rtn)):
+                    if rtn['parttime'].iloc[j] == 1:
+                        slot_count += 1
+                        idx = tmp[tmp.ymd == i].index[j]
+                        tmp.show_counts.iloc[idx] = str(i) + " " + str(slot_count)
+            show_id_seq = tmp['show_counts'].fillna(method='ffill')
+            self.train['show_id'] = show_id_seq.to_list() * int(self.train.shape[0] / show_id_seq.shape[0])
+
+        else:
+            self.ts_schedule['show_counts'] = ""
+            for i in self.ts_schedule.ymd.unique():
+                rtn = self.ts_schedule[self.ts_schedule.ymd == i]
+                slot_count = 0  # number of shows for each day
+                for j in range(0, len(rtn)):
+                    if rtn['parttime'].iloc[j] == 1:
+                        slot_count += 1
+                        idx = self.ts_schedule[self.ts_schedule.ymd == i].index[j]
+                        self.ts_schedule.show_counts.iloc[idx] = str(i) + " " + str(slot_count)
 
     def get_min_range(self):
         """
         :objective: get minutes aired for each show
         :return: pandas dataframe
         """
-        self.ts_schedule['min_range'] = ""
-        for i in range(0, len(self.ts_schedule)):
-            if self.ts_schedule.parttime.iloc[i] == 1:
-                min_dur = self.ts_schedule.exposed.iloc[i]
-                j = i + 1
-                if j == (len(self.ts_schedule)): break
-                while self.ts_schedule.parttime.iloc[j] != 1:
-                    min_dur += self.ts_schedule.exposed.iloc[j]
-                    j += 1
+        if self.type == "hungarian":
+            self.train['min_range']
+        else:
+            self.ts_schedule['min_range'] = ""
+            for i in range(0, len(self.ts_schedule)):
+                if self.ts_schedule.parttime.iloc[i] == 1:
+                    min_dur = self.ts_schedule.exposed.iloc[i]
+                    j = i + 1
                     if j == (len(self.ts_schedule)): break
-            self.ts_schedule.min_range.iloc[i:j] = min_dur
+                    while self.ts_schedule.parttime.iloc[j] != 1:
+                        min_dur += self.ts_schedule.exposed.iloc[j]
+                        j += 1
+                        if j == (len(self.ts_schedule)): break
+                self.ts_schedule.min_range.iloc[i:j] = min_dur
 
     def add_showid_minran_to_train(self):
         """
@@ -1149,8 +1173,8 @@ class Features:
 # train = t.run_all()
 # train.to_pickle("../data/20/train_v2.pkl")
 # # train.to_pickle("../data/20/train_fin_light_ver.pkl")
-t =Features(types = 'test')
-test_v2 = t.run_all()
-test_v2.to_pickle("../data/20/test_v2.pkl")
-# test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
-#
+# t =Features(types = 'test')
+# # test_v2 = t.run_all()
+# # test_v2.to_pickle("../data/20/test_v2.pkl")
+# # # test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
+# # #
