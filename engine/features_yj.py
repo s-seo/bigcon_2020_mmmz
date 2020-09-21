@@ -900,7 +900,7 @@ class Features:
 
     def get_mean_sales_origin(self):
         """
-        :objective: compute mean sales of original codes for each months 
+        :objective: compute mean sales of original codes
         :param: df - pd.DataFrame
         :return: pd.DataFrme - including mean_sales_origin
         """
@@ -934,32 +934,12 @@ class Features:
             train_jun.loc[train_jun.상품군 == '주방'].취급액 = 0.946*(train_jun.loc[train_jun.상품군 == '주방'].취급액)
             train_jun.loc[train_jun.상품군 == '침구'].취급액 = 1.052*(train_jun.loc[train_jun.상품군 == '침구'].취급액)
             train_jun.loc[train_jun.상품군 == '가구'].취급액 = 1.052*(train_jun.loc[train_jun.상품군 == '가구'].취급액)
-
-            train_dec.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
-            train_dec['days'] = train_dec.days - 1
-            lag_cols = ['days', '상품군', 'rolling_mean_7', 'rolling_mean_14', 'rolling_mean_21', 'rolling_mean_28']
-            train_dec_lags = train_dec[lag_cols].groupby(['days', '상품군']).mean()
-            train_dec_lags.reset_index(inplace=True)
-
-            train_jun.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
-            train_jun['days'] = train_jun.days - 2
-            train_jun_lags = train_jun[lag_cols].groupby(['days', '상품군']).mean()
-            train_jun_lags.reset_index(inplace=True)
-
-            history_sales_lags = pd.concat([train_dec_lags, train_jun_lags])[['original_c', '취급액']].groupby(['original_c']).취급액.mean()
-            history_sales_lags.reset_index(inplace=True)
             
-            self.train = pd.merge(left=self.train, right=history_sales_lags, on='original_c', how="left")
+            history_sales = pd.concat([train_dec, train_jun]).groupby('original_c').취급액.mean().to_frame()
+            history_sales.reset_index(inplace=True)
+            history_sales = history_sales.rename(columns = {'취급액':'mean_sales_origin'})
             
-            # extract 2019-Dec,June data
-            history_sales = full_train.loc[(full_train.months == 12)|(full_train.months == 6)]
-            history_sales.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
-            history_sales_lags = history_sales[['original_c', '취급액']].groupby(['original_c']).mean()
-            history_sales_lags.reset_index(inplace=True)
-            history_sales_lags = history_sales_lags.rename(columns={'취급액':'mean_sales_origin'})
-            
-            self.train = pd.merge(left=self.train, right=history_sales_lags, on='original_c', how="left")
-
+            self.train = pd.merge(left=self.train, right=history_sales, on='original_c', how="left")
         else :
             month_ori = self.train[['months','original_c','취급액']].groupby(['months','original_c']).mean()
             month_ori.reset_index(inplace=True)
