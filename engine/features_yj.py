@@ -24,8 +24,10 @@ class Features:
         
         if self.type == 'hungarian':
             df = pd.read_excel("../data/01/2020sales_opt_temp.xlsx")
+            df.exposed = df.exposed.astype(float)
         elif self.type == 'test':
             df = pd.read_excel("../data/00/202006schedule.xlsx", skiprows=1)
+            df['exposed'] = df['노출(분)']
         else:
             df = pd.read_csv("../data/00/2019sales.csv", skiprows=1)
             # adjust data types
@@ -33,8 +35,8 @@ class Features:
             df.취급액 = df.취급액.str.replace(",", "").astype(float)
             df.판매단가 = df.판매단가.str.replace(",", "").replace(' - ', np.nan).astype(float)
             df['volume'] = df['취급액'] / df['판매단가']
+            df['exposed'] = df['노출(분)']
 
-        df['exposed'] = df['노출(분)']
         # define data types
         df.마더코드 = df.마더코드.astype(int).astype(str).str.zfill(6)
         df.상품코드 = df.상품코드.astype(int).astype(str).str.zfill(6)
@@ -1138,8 +1140,8 @@ class Features:
 # train = t.run_all()
 # train.to_pickle("../data/20/train_v2.pkl")
 # train.to_pickle("../data/20/train_fin_light_ver.pkl")
-t =Features(types = 'test')
-test_v2 = t.run_all()
+# t =Features(types = 'test')
+# test_v2 = t.run_all()
 # test_v2.to_pickle("../data/20/test_v2.pkl")
-test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
+# test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
 #
