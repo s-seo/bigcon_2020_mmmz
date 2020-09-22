@@ -231,8 +231,10 @@ class Features:
         :objective: get timeslot of each show
         """
         if self.type == "hungarian":
+            self.train.sort_values(['상품코드', '방송일시'], ascending=[True, True], inplace=True)
             self.train['parttime'] = 1
-            self.train['parttime'] = self.train.groupby(['상품코드', 'ymd', 'hours']).parttime.cumsum()
+            self.train['parttime'] = self.train.groupby(['상품코드', 'ymd']).parttime.cumsum()
+#            self.train['parttime'] = self.train.groupby(['상품코드', 'ymd', 'hours']).parttime.cumsum()
 
         else:
             show_counts = [len(list(y)) for x, y in itertools.groupby(self.ts_schedule.상품코드)]  # count repeated 상품코드
@@ -256,19 +258,20 @@ class Features:
         :objective: get show id for each day
         :return: pandas dataframe
         """
-        if self.type == "hungarian":
-            tmp = self.train.iloc[:1791] #total time sequence of each product
-            tmp['show_counts'] = np.nan
-            for i in tmp.ymd.unique():
-                rtn = tmp[tmp.ymd == i]
-                slot_count = 0  # number of shows for each day
-                for j in range(0, len(rtn)):
-                    if rtn['parttime'].iloc[j] == 1:
-                        slot_count += 1
-                        idx = tmp[tmp.ymd == i].index[j]
-                        tmp.show_counts.iloc[idx] = str(i) + " " + str(slot_count)
-            show_id_seq = tmp['show_counts'].fillna(method='ffill')
-            self.train['show_id'] = show_id_seq.to_list() * int(self.train.shape[0] / show_id_seq.shape[0])
+        if self.type == "hungarian": 
+            self.train['show_id'] = [d.strftime("%Y-%m-%d %H") for d in self.train['방송일시']]
+#             tmp = self.train.iloc[:660] #total time sequence of each product (125, 660 etc)
+#             tmp['show_counts'] = np.nan
+#             for i in tmp.ymd.unique():
+#                 rtn = tmp[tmp.ymd == i]
+#                 slot_count = 0  # number of shows for each day
+#                 for j in range(0, len(rtn)):
+#                     if rtn['parttime'].iloc[j] == 1:
+#                         slot_count += 1
+#                         idx = tmp[tmp.ymd == i].index[j]
+#                         tmp.show_counts.iloc[idx] = str(i) + " " + str(slot_count)
+#             show_id_seq = tmp['show_counts'].fillna(method='ffill')
+#             self.train['show_id'] = show_id_seq.to_list() * int(self.train.shape[0] / show_id_seq.shape[0])
 
         else:
             self.ts_schedule['show_counts'] = ""
@@ -287,7 +290,7 @@ class Features:
         :return: pandas dataframe
         """
         if self.type == "hungarian":
-            self.train['min_range']
+            self.train['min_range'] = 60
         else:
             self.ts_schedule['min_range'] = ""
             for i in range(0, len(self.ts_schedule)):
@@ -306,16 +309,17 @@ class Features:
         :objective: add show_id and min_range column to train data
         :return: pandas dataframe
         """
-        self.train['min_range'] = ""
-        self.train['show_id'] = ""
-        for i in self.ts_schedule[self.ts_schedule['show_counts'] != ""].index:
-            show_id = self.ts_schedule.show_counts.iloc[i]
-            time_slot = self.ts_schedule.방송일시.iloc[i]
-            minrange = self.ts_schedule.min_range.iloc[i]
-            idx = self.train[(self.train.방송일시 >= time_slot) & (
-                        self.train.방송일시 < time_slot + datetime.timedelta(minutes=minrange))].index
-            self.train.show_id.iloc[idx] = show_id
-            self.train.min_range.iloc[idx] = minrange
+        if self.type != 'hungarian':
+            self.train['min_range'] = ""
+            self.train['show_id'] = ""
+            for i in self.ts_schedule[self.ts_schedule['show_counts'] != ""].index:
+                show_id = self.ts_schedule.show_counts.iloc[i]
+                time_slot = self.ts_schedule.방송일시.iloc[i]
+                minrange = self.ts_schedule.min_range.iloc[i]
+                idx = self.train[(self.train.방송일시 >= time_slot) & (
+                    self.train.방송일시 < time_slot + datetime.timedelta(minutes=minrange))].index
+                self.train.show_id.iloc[idx] = show_id
+                self.train.min_range.iloc[idx] = minrange
 
     ############################
     ## primetime
@@ -503,7 +507,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0)|((self.type == 'test') &(prev_wk == 22)):
+            if (prev_wk == 0)|(((self.type == 'test')|(self.type == 'hungarian')) &(prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             groups = train_subset[['상품코드', '판매단가']].groupby(by='상품코드')
@@ -527,7 +531,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
+            if (prev_wk == 0) | (((self.type == 'test')|(self.type == 'hungarian')) & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             grp = train_subset.groupby(by='상품코드').apply(lambda x: x.show_id.nunique())
@@ -550,7 +554,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
+            if (prev_wk == 0) | (((self.type == 'test')|(self.type == 'hungarian')) & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             groups = train_subset[['마더코드', '판매단가']].groupby(by='마더코드')
@@ -574,7 +578,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
+            if (prev_wk == 0) | (((self.type == 'test')|(self.type == 'hungarian')) & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             grp = train_subset.groupby(by='마더코드').apply(lambda x: x.show_id.nunique())
@@ -597,7 +601,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
+            if (prev_wk == 0) | (((self.type == 'test')|(self.type == 'hungarian')) & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             groups = train_subset[['상품군', '판매단가']].groupby(by='상품군')
@@ -621,7 +625,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
+            if (prev_wk == 0) | (((self.type == 'test')|(self.type == 'hungarian')) & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             grp = train_subset.groupby(by='상품군').apply(lambda x: x.show_id.nunique())
@@ -691,7 +695,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
+            if (prev_wk == 0) | (((self.type == 'test')|(self.type == 'hungarian')) & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             groups = train_subset[['small_c', '판매단가']].groupby(by='small_c')
@@ -715,7 +719,7 @@ class Features:
             curr_wk = num
             prev_wk = curr_wk - 1
             prev_wk_selector = (self.train['week_num'] == prev_wk)
-            if (prev_wk == 0) | ((self.type == 'test') & (prev_wk == 22)):
+            if (prev_wk == 0) | (((self.type == 'test')|(self.type == 'hungarian')) & (prev_wk == 22)):
                 continue
             train_subset = self.train[prev_wk_selector]
             grp = train_subset.groupby(by='small_c').apply(lambda x: x.show_id.nunique())
@@ -989,49 +993,61 @@ class Features:
         :objective: add category columns
         :return: pandas dataframe
         """
-        if self.type == 'test':
+        
+        if self.type == 'hungarian':
+            self.train = self.train
+        elif self.type == 'test':
             categories = pd.read_excel("../data/01/2020sales_test_added.xlsx")
-        elif self.type == 'train':
+            categories.상품코드 = categories.상품코드.dropna().astype(int).astype(str).str.zfill(6)
+            categories.방송일시 = pd.to_datetime(categories.방송일시, format="%Y/%m/%d %H:%M")
+            categories.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+            
+            self.train = pd.merge(left=self.train, right=categories[['방송일시', '상품코드', 'small_c', 'small_c_code',
+                                                                 'middle_c', 'middle_c_code', 'big_c',
+                                                                 'big_c_code', 'original_c']],
+                              how='left', on=['방송일시', '상품코드'], sort=False)
+        else :
             categories = pd.read_excel("../data/01/2019sales_added.xlsx")
             categories.rename(columns={' 취급액 ': '취급액'}, inplace=True)
-        categories.상품코드 = categories.상품코드.dropna().astype(int).astype(str).str.zfill(6)
-        categories.방송일시 = pd.to_datetime(categories.방송일시, format="%Y/%m/%d %H:%M")
-        categories.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
-        
-        if not self.type == 'hungarian':
+            categories.상품코드 = categories.상품코드.dropna().astype(int).astype(str).str.zfill(6)
+            categories.방송일시 = pd.to_datetime(categories.방송일시, format="%Y/%m/%d %H:%M")
+            categories.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+            
             self.train = pd.merge(left=self.train, right=categories[['방송일시', '상품코드', 'small_c', 'small_c_code',
-                                                                     'middle_c', 'middle_c_code', 'big_c',
-                                                                     'big_c_code', 'original_c']],
-                                        how='left', on=['방송일시', '상품코드'], sort=False)
+                                                                 'middle_c', 'middle_c_code', 'big_c',
+                                                                 'big_c_code', 'original_c']],
+                              how='left', on=['방송일시', '상품코드'], sort=False)
+        
 
     def add_vratings(self):
         """
         :**objective: add vratings by rate mean
         """
-        onair = pd.read_csv("../data/11/vrating_defined.csv")
-        onair.상품코드 = onair.상품코드.dropna().astype(int).astype(str).str.zfill(6)
-        onair['schedule'] = onair[['DATE', 'TIME']].agg(' '.join, axis=1)  ##schedule = 방송일
-        onair['schedule'] = pd.to_datetime(onair.schedule, format="%Y/%m/%d %H:%M")
-        onair.sort_values(['schedule', '상품코드'], ascending=[True, True], inplace=True)
+        if self.type != 'hungarian':
+            onair = pd.read_csv("../data/11/vrating_defined.csv")
+            onair.상품코드 = onair.상품코드.dropna().astype(int).astype(str).str.zfill(6)
+            onair['schedule'] = onair[['DATE', 'TIME']].agg(' '.join, axis=1)  ##schedule = 방송일
+            onair['schedule'] = pd.to_datetime(onair.schedule, format="%Y/%m/%d %H:%M")
+            onair.sort_values(['schedule', '상품코드'], ascending=[True, True], inplace=True)
+            
+            # impute rate mean nan
+            random.seed(100)
+            for i in range(0, len(self.train)):
+                if math.isnan(onair.iloc[i, 1]):
+                    onair['rate_mean'].iloc[i] = onair['rate_mean'].iloc[i - 1]
+                else:
+                    continue
 
-        # impute rate mean nan
-        random.seed(100)
-        for i in range(0, len(self.train)):
-            if math.isnan(onair.iloc[i, 1]):
-                onair['rate_mean'].iloc[i] = onair['rate_mean'].iloc[i - 1]
-            else:
-                continue
-
-        # add noise to zero values
-        for i in range(0, len(onair)):
-            val = onair['rate_mean'].iloc[i]
-            if val == 0:
-                onair['rate_mean'].iloc[i] = np.random.uniform(0, 1, 1)[0] / 1000000
-            else:
-                continue
-        rate_mean = onair['rate_mean']
-        self.train['vratings'] = rate_mean
-
+            # add noise to zero values
+            for i in range(0, len(onair)):
+                val = onair['rate_mean'].iloc[i]
+                if val == 0:
+                    onair['rate_mean'].iloc[i] = np.random.uniform(0, 1, 1)[0] / 1000000
+                else:
+                    continue
+            rate_mean = onair['rate_mean']
+            self.train['vratings'] = rate_mean
+            
     def get_season_items(self):
         """
         :objective: create dummy vars(spring,summer,fall,winter) for seasonal items
@@ -1149,7 +1165,7 @@ class Features:
         :objective: drop na rows and 취급액 == 50000(train)
                     drop rows with 판매단가 == 0(test)
         """
-        if self.type == 'test':
+        if (self.type == 'test') | (self.type == 'hungarian'):
             self.train = self.train[self.train['판매단가'] != 0]
         else:
             self.train = self.train[self.train['취급액'].notna()]
@@ -1251,7 +1267,7 @@ class Features:
         #
         ### not dividedd
         # self.get_lag_sales()
-        self.get_lag_sales(not_divided = False)
+        self.get_lag_sales(not_divided = True)
         print("finish getting get_lag_sales data")
         print(self.train.shape, ": df shape")
         self.get_ts_pred()
