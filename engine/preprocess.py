@@ -1,64 +1,40 @@
 import warnings
 warnings.filterwarnings("ignore")
 import pandas as pd
-import numpy as np
-import math
-import random
-
-# data
-import datetime
-import itertools
-import json
-import pickle
 
 # sklearn
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.decomposition import PCA
-
-# custom class
-# from features_yj import Features
-
 
 # if separate df with all features is existent, set path
 # otherwise merge raw df with Features module
 
-df_path = 'path of df'
 
-def load_df_added(df, path = True):
+def load_df(path=None):
     """
     :objective: load data
     :return: pandas dataframe
     """
-    if path :
-        df = pd.read_pickle(df_path)
-    else:
-        t = Features()
-        df = t.run_all()
-
-    return df
+    try:
+        df = pd.read_pickle(path)
+        return df.reset_index()
+    except:
+        print("check file directory")
 
 
-# set 'keepshowid = False' if you don't want it
-def drop_useless(df, keepshowid = True):
+def drop_useless(df):
     """
-    :objective: drop useless features for model. save 'show_id' just in case
+    :objective: drop useless features for model.
     :return: pandas dataframe
     """
     #useless features
-    xcol = ['방송일시', '노출(분)', '마더코드', '상품코드', '상품명', 'exposed', 'ymd', 'volume',
-            'years','days','hours','week_num','holidays', 'red', 'min_range','brand','original_c',
-            'small_c_code','middle_c_code','big_c_code','sales_power']
+    xcol = ['방송일시', '노출(분)', '마더코드', '상품명', 'exposed', 'ymd', 'volume',
+            'years', 'days', 'hours', 'week_num', 'holidays', 'red', 'min_range', 'brand',
+            'small_c_code', 'middle_c_code', 'big_c_code', 'sales_power']
     col = [x for x in df.columns if x in xcol]
-    df = df.drop(columns = col)
-    if keepshowid:
-        df = df.copy()
-    else:
-        df = df.drop(columns = ['show_id'])
-
+    df = df.drop(columns=col)
+    df = df.copy()
     return df
-
 
 
 def check_na(df):
@@ -69,20 +45,19 @@ def check_na(df):
     print(df.isnull().sum())
 
 
-
 # 새로운 변수에 na 있으면 일단 imputation 따로 해야함. 아니면 여기 list에 변수 이름 추가해도 됨.
 def na_to_zeroes(df):
     """
     :objective: Change all na's to zero.(just for original lag!)
     :return: pandas dataframe
     """
-    lag_col = ['lag_scode_count','lag_mcode_price','lag_mcode_count','lag_bigcat_price','lag_bigcat_count',
-                'lag_bigcat_price_day','lag_bigcat_count_day','lag_small_c_price','lag_small_c_count']
-    for col in lag_col:
+    xcol = [x for x in df.columns if
+            x in lag_col1 + lag_col2 + ['mid_click_r', 'age30_middle', 'age40_middle', 'age50_middle',
+                                        'age60above_middle', 'pc_middle', 'mobile_middle']]
+    for col in xcol:
         df[col] = df[col].fillna(0)
 
     return df
-
 
 ## Encoding
 # One-hot-Encoding
@@ -91,7 +66,7 @@ def run_onehot(df):
     :objective: Perform ohe for categorical columns
     :return: pandas dataframe
     """
-    cats_col = ['min_start','japp','parttime', 'primetime','exposed_t','상품군','weekdays', 'small_c','middle_c','big_c', 'pay','men']
+    cats_col = ['min_start','japp','parttime', 'primetime','exposed_t','상품군','weekdays', 'small_c','middle_c','big_c','pay','men']
     num = df.drop(columns = cats_col)
     X1 = df[cats_col]
     # Onehotencoder
@@ -105,6 +80,7 @@ def run_onehot(df):
     return df_ohe
 
 # Label Encoding
+
 def get_label_features(df):
     """
     :objective: Show features that need labelencoding
@@ -166,57 +142,27 @@ def remove_outliers(df_train):
     :objective: Remove outliers. Before dividing into X/y
     :return: pandas dataframe
     """
-    numeric_colnum = df_train.columns.get_indexer(['판매단가','취급액','vratings']).tolist()
-    feature_set = df_train.iloc[:,numeric_colnum]
+    numeric_colnum = df_train.columns.get_indexer(['판매단가', '취급액']).tolist()
+    feature_set = df_train.iloc[:, numeric_colnum]
     # identify outliers in the training dataset
-    iso = IsolationForest(n_estimators=50, max_samples=50, contamination=float(0.05),max_features=1.0)
+    iso = IsolationForest(n_estimators=50, max_samples=50, contamination=float(0.05), max_features=1.0)
     iso.fit(feature_set)
     pred = iso.predict(feature_set)
-    feature_set['anomaly']=pred
-    outliers=feature_set.loc[feature_set['anomaly']==-1]
-    outlier_index=list(outliers.index)
+    feature_set['anomaly'] = pred
+    outliers = feature_set.loc[feature_set['anomaly'] == -1]
+    outlier_index = list(outliers.index)
     df_train = df_train.loc[~df_train.index.isin(outlier_index)].reset_index()
 
     return df_train
 
-
-## PCA
-# global vars
-categorical_features = ['상품군','weekdays','show_id','small_c','middle_c','big_c',
-                        'pay','months','hours_inweek','weekends','japp','parttime',
-                        'min_start','primetime','prime_origin','prime_smallc',
-                        'freq','bpower','steady','men','pay','luxury',
-                        'spring','summer','fall','winter','rain']
-
-def drop_cat(df_pca):
+def run_preprocess(df):
     """
-    :objective: Before PCA, drop categorical variables
+    :objective: Run Feature deletion, NA imputation, label encoding
     :return: pandas dataframe
     """
-    df_pca = df_pca.drop(columns = categorical_features)
-
-    return df_pca
-
-# scalers
-# Min-max가 좀 더 일반적이지만 Standard는 outlier 영향을 적게 받는다는 장점이 있습니당
-
-def run_stdscale(df_pca):
-    """
-    :objective: scale / all columns should be numeric!!!
-    :return: pandas dataframe
-    """
-    scaler = StandardScaler()
-    scaled = scaler.fit_transform(df_pca)
-
-    return scaled
-
-def run_pca(df_pca_scaled, n_components = 10):
-    """
-    :objective: Run PCA with n_components = 10
-    :return: pandas dataframe
-    """
-    pca = PCA(n_components=10)
-    pca.fit(df_pca_scaled)
-    df_pca = pca.transform(df_pca_scaled)
-
-    return pd.DataFrame(df_pca)
+    df = drop_useless(df)
+    df = na_to_zeroes(df)
+    # df = remove_outliers(df)
+    df = run_label_all(df)
+    df1 = df.copy()
+    return df1
