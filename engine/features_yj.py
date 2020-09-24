@@ -766,7 +766,7 @@ class Features:
             # merge
             self.train.loc[self.train['show_id'] == curr_wk, 'lag_all_price_day'] = mean_price
 
-    def get_lag_sales(self, not_divided = False):
+    def get_lag_sales(self, not_divided = False, counterfactual = False):
         """
         :objective: get sales lag 1,2 for weekend cases and lag 1 to 5 for weekday cases; pointwisely
         :return: pd.DataFrame - including lag_sales_wk_i (i = 1,2), lag_sales_wd_i (i = 1,2,3,4,5)
@@ -825,10 +825,20 @@ class Features:
             
             train_lags = pd.concat([train_dec_lags, train_jun_lags]).groupby('day_hour').mean()
             train_lags.reset_index(inplace=True)
-           
-            self.train = pd.merge(left=self.train, right=train_lags[lag_cols], how='left',
+            
+            if counterfactual:
+                train_cf = full_train.loc[(full_train.months == 6) | ((full_train.months == 7)  & (full_train.days.isin([1,2])))]
+                train_cf['day_hour'] = (train_cf.days - 2).astype(str) + '/' + train_cf.hours.astype(str)
+                train_cf_lags = train_cf[lag_cols].groupby(['day_hour']).mean()
+                train_cf_lags.reset_index(inplace=True)
+                
+                self.train = pd.merge(left=self.train, right=train_cf_lags[lag_cols], how='left',
+                                     on=['day_hour'])
+                self.train.drop(['day_hour'], axis=1, inplace=True)
+            else:
+                self.train = pd.merge(left=self.train, right=train_lags[lag_cols], how='left',
                                  on=['day_hour'])
-            self.train.drop(['day_hour'], axis=1, inplace=True)
+                self.train.drop(['day_hour'], axis=1, inplace=True)
 
         else:
             if not_divided:
@@ -861,7 +871,7 @@ class Features:
                 self.train = pd.concat([df_wd, df_wk], join='outer', sort=False)
 
 
-    def get_rolling_means(self):
+    def get_rolling_means(self, counterfactual = False):
         """
         :objective: compute rolling means by 상품군 for 7/14/21/28 days
         :param: df - pd.DataFrame
@@ -912,8 +922,17 @@ class Features:
             
             train_lags = pd.concat([train_dec_lags, train_jun_lags]).groupby(['days', '상품군']).mean()
             train_lags.reset_index(inplace=True)
-           
-            self.train = pd.merge(left=self.train, right=train_lags[lag_cols], how='left',
+            
+            if counterfactual :
+                train_cf = full_train.loc[(full_train.months == 6) | ((full_train.months == 7)  & (full_train.days.isin([1,2])))]
+                train_cf.sort_values(['방송일시', '상품코드'], ascending=[True, True], inplace=True)
+                train_cf['days'] = train_cf.days - 2
+                train_cf_lags = train_cf[lag_cols].groupby(['days', '상품군']).mean()
+                train_cf_lags.reset_index(inplace=True)
+                self.train = pd.merge(left=self.train, right=train_cf_lags[lag_cols], how='left',
+                      on=['days', '상품군'])
+            else :
+                self.train = pd.merge(left=self.train, right=train_lags[lag_cols], how='left',
                                   on=['days', '상품군'])
         else:
             for i in [7, 14, 21, 28]:
@@ -926,7 +945,7 @@ class Features:
                                 self.train[(self.train.방송일시 >= time_slot - np.timedelta64(i,'D')) &
                                     (self.train.방송일시 < time_slot) & (self.train.상품군 == category)].취급액.mean()
 
-    def get_mean_sales_origin(self):
+    def get_mean_sales_origin(self, counterfactual = False):
         """
         :objective: compute mean sales of original codes
         :param: df - pd.DataFrame
@@ -967,7 +986,14 @@ class Features:
             history_sales.reset_index(inplace=True)
             history_sales = history_sales.rename(columns = {'취급액':'mean_sales_origin'})
             
-            self.train = pd.merge(left=self.train, right=history_sales, on='original_c', how="left")
+            if counterfactual :
+                train_cf = full_train.loc[(full_train.months == 6) | ((full_train.months == 7)  & (full_train.days.isin([1,2])))]
+                history_sales_cf = train_cf.groupby('original_c').취급액.mean().to_frame()
+                history_sales_cf.reset_index(inplace=True)
+                history_sales_cf = history_sales_cf.rename(columns = {'취급액':'mean_sales_origin'})
+                self.train = pd.merge(left=self.train, right=history_sales_cf, on='original_c', how="left")
+            else :
+                self.train = pd.merge(left=self.train, right=history_sales, on='original_c', how="left")
         else :
             month_ori = self.train[['months','original_c','취급액']].groupby(['months','original_c']).mean()
             month_ori.reset_index(inplace=True)
@@ -1067,77 +1093,92 @@ class Features:
         self.train.fall.loc[self.train['small_c'].isin(seasonal_items['fall'])] = 1
         self.train.winter.loc[self.train['small_c'].isin(seasonal_items['winter'])] = 1
 
-    def add_small_c_clickr(self):
+    def add_small_c_clickr(self, counterfactual = False):
         """
         :objective: add click ratio column (small_c)
         """
-        smallc_comb = pd.read_excel("../data/11/small_comb.xlsx")
-        smallc_comb['ymd'] = pd.to_datetime(smallc_comb.date.astype(str)).dt.date
-        self.train = pd.merge(left=self.train,
-                              right=smallc_comb[['small_c_code', 'ymd', 'small_click_r']],
-                              how='left', on=['small_c_code', 'ymd'], sort=False)
+        if counterfactual :
+            self.train = self.train
+        else :
+            smallc_comb = pd.read_excel("../data/11/small_comb.xlsx")
+            smallc_comb['ymd'] = pd.to_datetime(smallc_comb.date.astype(str)).dt.date
+            self.train = pd.merge(left=self.train,
+                                  right=smallc_comb[['small_c_code', 'ymd', 'small_click_r']],
+                                  how='left', on=['small_c_code', 'ymd'], sort=False)
 
-    def add_mid_c_clickr(self):
+    def add_mid_c_clickr(self, counterfactual = False):
         """
         :objective: add click ratio column (mid_c)
         """
-        midc_comb = pd.read_excel("../data/11/mid_comb.xlsx")
-        midc_comb['ymd'] = pd.to_datetime(midc_comb.date.astype(str)).dt.date
-        midc_comb['middle_c_code'] = midc_comb['mid_c_code']
-        self.train = pd.merge(left=self.train,
-                              right=midc_comb[['middle_c_code', 'ymd', 'mid_click_r']],
-                              how='left', on=['middle_c_code', 'ymd'], sort=False)
+        if counterfactual :
+            self.train = self.train
+        else :
+            midc_comb = pd.read_excel("../data/11/mid_comb.xlsx")
+            midc_comb['ymd'] = pd.to_datetime(midc_comb.date.astype(str)).dt.date
+            midc_comb['middle_c_code'] = midc_comb['mid_c_code']
+            self.train = pd.merge(left=self.train,
+                                  right=midc_comb[['middle_c_code', 'ymd', 'mid_click_r']],
+                                  how='left', on=['middle_c_code', 'ymd'], sort=False)
 
-    def add_big_c_clickr(self):
+    def add_big_c_clickr(self, counterfactual = False):
         """
         :objective: add click ratio column (big_c)
         """
-        bigc_comb = pd.read_excel("../data/11/big_comb.xlsx")
-        bigc_comb['ymd'] = pd.to_datetime(bigc_comb.date.astype(str)).dt.date
-        self.train = pd.merge(left=self.train,
-                              right=bigc_comb[['big_c_code', 'ymd', 'big_click_r']],
-                              how='left', on=['big_c_code', 'ymd'], sort=False)
+        if counterfactual :
+            self.train = self.train
+        else :
+            bigc_comb = pd.read_excel("../data/11/big_comb.xlsx")
+            bigc_comb['ymd'] = pd.to_datetime(bigc_comb.date.astype(str)).dt.date
+            self.train = pd.merge(left=self.train,
+                                  right=bigc_comb[['big_c_code', 'ymd', 'big_click_r']],
+                                  how='left', on=['big_c_code', 'ymd'], sort=False)
 
-    def add_age_click_ratio(self):
+    def add_age_click_ratio(self, counterfactual = False):
         """
         :objective: add click ratio by age
         :return:
         """
-        age_click = pd.read_excel("../data/11/age_click.xlsx")
-        age_click['ymd'] = pd.to_datetime(age_click.date.astype(str)).dt.date
-        self.train = pd.merge(left=self.train,
-                              right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
-                              how='left', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
-        self.train = pd.merge(left=self.train,
-                              right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
-                              how='left', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
-                              suffixes=['_small', '_middle'])
-        self.train = pd.merge(left=self.train,
-                              right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
-                              how='left', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
-        self.train.drop(['cat_code', 'cat_code_small', 'cat_code_middle'], axis=1, inplace=True)
-        self.train = self.train.rename(
-            columns={'age30': 'age30_big', 'age40': 'age40_big', 'age50': 'age50_big', 'age60above': 'age60above_big'})
+        if counterfactual :
+            self.train = self.train
+        else :
+            age_click = pd.read_excel("../data/11/age_click.xlsx")
+            age_click['ymd'] = pd.to_datetime(age_click.date.astype(str)).dt.date
+            self.train = pd.merge(left=self.train,
+                                  right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
+                                  how='left', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+            self.train = pd.merge(left=self.train,
+                                  right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
+                                  how='left', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
+                                  suffixes=['_small', '_middle'])
+            self.train = pd.merge(left=self.train,
+                                  right=age_click[['cat_code', 'ymd', 'age30', 'age40', 'age50', 'age60above']],
+                                  how='left', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+            self.train.drop(['cat_code', 'cat_code_small', 'cat_code_middle'], axis=1, inplace=True)
+            self.train = self.train.rename(
+                columns={'age30': 'age30_big', 'age40': 'age40_big', 'age50': 'age50_big', 'age60above': 'age60above_big'})
 
-    def add_device_click_ratio(self):
+    def add_device_click_ratio(self, counterfactual = False):
         """
         :objective: add click ratio by device type(mobile/pc)
         :return:
         """
-        device_click = pd.read_excel("../data/11/dev_click.xlsx")
-        device_click['ymd'] = pd.to_datetime(device_click.date.astype(str)).dt.date
-        self.train = pd.merge(left=self.train,
-                              right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
-                              how='left', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
-        self.train = pd.merge(left=self.train,
-                              right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
-                              how='left', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
-                              suffixes=['_small', '_middle'])
-        self.train = pd.merge(left=self.train,
-                              right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
-                              how='left', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
-        self.train.drop(['cat_code', 'cat_code_small', 'cat_code_middle'], axis=1, inplace=True)
-        self.train = self.train.rename(columns={'pc': 'pc_big', 'mobile': 'mobile_big'})
+        if counterfactual :
+            self.train = self.train
+        else:            
+            device_click = pd.read_excel("../data/11/dev_click.xlsx")
+            device_click['ymd'] = pd.to_datetime(device_click.date.astype(str)).dt.date
+            self.train = pd.merge(left=self.train,
+                                  right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
+                                  how='left', left_on=['small_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+            self.train = pd.merge(left=self.train,
+                                  right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
+                                  how='left', left_on=['middle_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False,
+                                  suffixes=['_small', '_middle'])
+            self.train = pd.merge(left=self.train,
+                                  right=device_click[['cat_code', 'ymd', 'pc', 'mobile']],
+                                  how='left', left_on=['big_c_code', 'ymd'], right_on=['cat_code', 'ymd'], sort=False)
+            self.train.drop(['cat_code', 'cat_code_small', 'cat_code_middle'], axis=1, inplace=True)
+            self.train = self.train.rename(columns={'pc': 'pc_big', 'mobile': 'mobile_big'})
 
     def get_weather(self):
         """
@@ -1238,36 +1279,36 @@ class Features:
         self.get_season_items()
         print("finish getting season_items data")
         print(self.train.shape, ": df shape")
-        self.add_small_c_clickr()
+        
+        self.add_small_c_clickr(counterfactual = True)
         print("finish getting click ratio data")
         print(self.train.shape, ": df shape")
-
-        self.add_mid_c_clickr()
+        self.add_mid_c_clickr(counterfactual = True)
         print("finish getting click ratio data")
         print(self.train.shape, ": df shape")
-        self.add_big_c_clickr()
+        self.add_big_c_clickr(counterfactual = True)
         print("finish getting click ratio data")
         print(self.train.shape, ": df shape")
+        
         self.get_weather()
         print("finish getting weather data")
         print(self.train.shape, ": df shape")
-
         self.price_to_rate()
         self.round_exposed()
-        self.add_age_click_ratio()
-        self.add_device_click_ratio()
+        
+        self.add_age_click_ratio(counterfactual = True)
+        self.add_device_click_ratio(counterfactual = True)
         print("finish getting add_device_click_ratio data")
         print(self.train.shape, ": df shape")
-        self.get_rolling_means()
+        self.get_rolling_means(counterfactual = True)
         print("finish getting get_rolling_means data")
         print(self.train.shape, ": df shape")
-        self.get_mean_sales_origin()
+        self.get_mean_sales_origin(counterfactual = True)
         print("finish getting get_mean_sales_origin data")
         print(self.train.shape, ": df shape")
         #
         ### not dividedd
-        # self.get_lag_sales()
-        self.get_lag_sales(not_divided = True)
+        self.get_lag_sales(not_divided = True, counterfactual = True)
         print("finish getting get_lag_sales data")
         print(self.train.shape, ": df shape")
         self.get_ts_pred()
@@ -1281,8 +1322,8 @@ class Features:
 # train = t.run_all()
 # train.to_pickle("../data/20/train_v2.pkl")
 # # train.to_pickle("../data/20/train_fin_light_ver.pkl")
-# t =Features(types = 'test')
-# # test_v2 = t.run_all()
-# # test_v2.to_pickle("../data/20/test_v2.pkl")
+t =Features(types = 'test')
+test_v2 = t.run_all()
+test_v2.to_pickle("../data/20/test_v2.pkl")
 # # # test_v2.to_pickle("../data/20/test_fin_light_ver.pkl")
 #
