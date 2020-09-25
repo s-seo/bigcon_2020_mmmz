@@ -1,220 +1,88 @@
 # General imports
 import warnings
+
 warnings.filterwarnings("ignore")
 import pandas as pd
 import numpy as np
-import math
 import random
-import sys, gc, time
 import os
 
 # data
-import datetime
-import itertools
-import json
 import pickle
 
 # sklearn
-from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder
-from sklearn.preprocessing import MinMaxScaler, StandardScaler, OrdinalEncoder
-from sklearn.metrics import make_scorer
-from sklearn.model_selection import cross_val_score
-from sklearn.decomposition import PCA
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score,mean_squared_error
-
+from sklearn.preprocessing import RobustScaler
 
 # model
 import lightgbm as lgb
 from bayes_opt import BayesianOptimization
 from lightgbm import LGBMRegressor
-import seaborn as sns
 import matplotlib.pyplot as plt
 
-# custom modules
-# from engine.features_yj import Features
-from engine.preprocess import load_df_added, drop_useless, check_na, run_label_all, remove_outliers, run_stdscale
-import tensorflow as tf
-import tensorflow.keras as keras
-
+from engine.preprocess import load_df, run_preprocess
+from data.vars import *
 
 ###############################################################################
-################################# Load Data ####################################
+################################# Load Data ###################################
 ###############################################################################
 
 ## Set Directories
 ## Data is NOT RAW and has all features
 
 local_DIR = os.getcwd()
-featured_DATA_DIR = local_DIR + '/data/20'
-# ?PROCESSED_DATA_DIR = local_DIR +'/data/21'
+MODELS_DIR = local_DIR + "/data/saved_models"
+featured_DATA_DIR = local_DIR + '/data/fin_data'
 
 ## Import 6 types of dataset
 ## Descriptions:
 #   - df_wd_lag : weekday / + lags
-#   - df_wd_no_lag : weekday
 #   - df_wk_lag: weekend / + lags
-#   - df_wk_no_lag : weekend
 #   - df_all_lag : all days / +lags
-#   - df_all : all days
 
-df_wd_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wd_lag.pkl').reset_index()
-df_wd_no_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wd_no_lag.pkl').reset_index()
-df_wk_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_lag.pkl').reset_index()
-df_wk_no_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_no_lag.pkl').reset_index()
-df_all_lag = pd.read_pickle(featured_DATA_DIR + '/train_fin_light_ver.pkl').reset_index()
-#df_all = pd.read_pickle(featured_DATA_DIR + '/train_fin_wk_lag.pkl')
-
-
-## drop unnecessary lag columns
-df_wd_lag = df_wd_lag.drop(columns = ['lag_sales_wk_1','lag_sales_wk_2'])
-df_wk_lag = df_wk_lag.drop(columns = ['lag_sales_wd_1', 'lag_sales_wd_2','lag_sales_wd_3', 'lag_sales_wd_4', 'lag_sales_wd_5'])
-
-df_wk_lag.shape # (10060, 89)
-df_wk_no_lag.shape # (10060, 83)
-df_wd_lag.shape # (25319, 92)
-df_wd_no_lag.shape # (25319, 83)
-df_all_lag.shape # (35379, 91)
-
-
-## set some Global Vars
-data_list = ['df_wk_lag','df_wk_no_lag','df_wd_lag','df_wd_no_lag','df_all_lag']
-
-lag_col1 = ['lag_scode_count','lag_mcode_price','lag_mcode_count','lag_bigcat_price','lag_bigcat_count',
-            'lag_bigcat_price_day','lag_bigcat_count_day','lag_small_c_price','lag_small_c_count']
-
-lag_col2 = ['rolling_mean_7', 'rolling_mean_14', 'lag_sales_wd_1', 'lag_sales_wd_2','lag_sales_wd_3',
-            'lag_sales_wd_4', 'lag_sales_wd_5', 'lag_sales_wk_1','lag_sales_wk_2', 'ts_pred',
-           'rolling_mean_mcode_7','rolling_mean_mcode_14',
-           'rolling_mean_origin_7', 'rolling_mean_origin_14','rolling_mean_origin_21', 'rolling_mean_origin_28']
-
-num_col = ['']
-
-cat_col = ['상품군','weekdays','show_id','small_c','middle_c','big_c',
-                        'pay','months','hours_inweek','weekends','japp','parttime',
-                        'min_start','primetime','prime_origin','prime_smallc',
-                        'freq','bpower','steady','men','pay','luxury',
-                        'spring','summer','fall','winter','rain']
-len(lag_col1)
-len(cat_col)
-
-
-
+df_wd_lag = load_df(featured_DATA_DIR + '/train_fin_wd_lag.pkl')
+df_wk_lag = load_df(featured_DATA_DIR + '/train_fin_wk_lag.pkl')
+df_all_lag = load_df(featured_DATA_DIR + '/train_fin_light_ver.pkl')
 
 ###############################################################################
 ############################### Preprocess  ##################################
 ###############################################################################
 
-
-check_na(df_wk_lag.iloc[:,:40])
-
-## simple function that will be used for run_preprocess
-def na_to_zeroes(df):
-    """
-    :objective: Change all na's to zero.(just for original lag!)
-    :return: pandas dataframe
-    """
-    xcol = [x for x in df.columns if x in lag_col1+lag_col2+['mid_click_r']]
-    for col in xcol:
-        df[col] = df[col].fillna(0)
-
-    return df
-
-def drop_cat(df_pca):
-    """
-    :objective: Before PCA, drop categorical variables
-    :return: pandas dataframe
-    """
-    xcol = [x for x in df_pca.columns if x in cat_col+lag_col2]
-    df_pca = df_pca.drop(columns = xcol)
-    df_pca = df_pca.drop(columns = '취급액')
-
-    return df_pca
-
-def run_pca(df_pca_scaled, n_components = 5):
-    """
-    :objective: Run PCA with n_components = 5
-    :return: pandas dataframe
-    """
-    pca = PCA(n_components = 5)
-    pca.fit(df_pca_scaled)
-    df_pca = pca.transform(df_pca_scaled)
-
-    return df_pca
-
-## run preprocessing in a shot
-## pca is optional and only applied to numeric features other than 'lag'
-## NOTICE: removing outliers were run prior to dividing train/val
-## if replace = True, new PCA will replace corresponding numerical columns
-## if you want to simply add PCA columns to original data, set replace = False
-def run_preprocess(df, pca = True, replace = True):
-    """
-    :objective: Run Feature deletion, NA imputation, label encoding, pca(optional)
-    :return: pandas dataframe
-    """
-    df = drop_useless(df)
-    df = na_to_zeroes(df)
-    #df = remove_outliers(df)
-    df = run_label_all(df)
-    df1 = df.copy()
-    if pca:
-        xcol = [x for x in df1.columns if x in cat_col+lag_col2]
-        df_pca = df1.copy()
-        df_pca = drop_cat(df_pca).copy()
-        df_pca = run_stdscale(df_pca)
-        df_pca = run_pca(df_pca)
-        if replace:
-            df_pca1 = pd.concat([df1[xcol], pd.DataFrame(df_pca)], axis=1)
-            return df_pca1
-        else:
-            df_pca2 = pd.concat([df1, pd.DataFrame(df_pca)], axis=1)
-            return df_pca2
-    else:
-        return df1
-
 ## Preprocessed datasets
-df_wk_lag_PP = run_preprocess(df_wk_lag, pca = False, replace =False)
-df_wk_no_lag_PP = run_preprocess(df_wk_no_lag, pca = False, replace =False)
-df_wd_lag_PP = run_preprocess(df_wd_lag, pca = False, replace = False)
-df_wd_no_lag_PP = run_preprocess(df_wd_no_lag, pca = False, replace =False)
-df_all_lag_pp = run_preprocess(df_all_lag, pca = False, replace =True)
+df_wk_lag_PP = run_preprocess(df_wk_lag)
+df_wd_lag_PP = run_preprocess(df_wd_lag)
 
-#df_wd_lag_PP.to_csv ('df_wd_lag_PP.csv', index = False, header=True,encoding='ms949')
-#df_wd_no_lag_PP.to_csv ('df_wd_no_lag_PP.csv', index = False, header=True,encoding='ms949')
-
-
-
+## Scaled Data
+df_wd_lag_PP_s = df_wd_lag_PP.copy()
+df_wk_lag_PP_s = df_wk_lag_PP.copy()
 
 ###############################################################################
-############################### Helper Functions  ##################################
+############################### Helper Functions  #############################
 ###############################################################################
-
-## quickly check distribution
-import seaborn as sns
-plt.figure(figsize=(10,10))
-sns.distplot(df_wd_lag_PP.취급액)
-sns.distplot(df_wd_lag_PP.rolling_mean_14)
-df_wd_lag_PP.columns
-
 
 ## Seeder
 def seed_everything(seed=127):
     random.seed(seed)
     np.random.seed(seed)
 
+
 ## metrics
-# negative mape
+# negative mape (For Bayesian Optimization)
 def neg_mape(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
-    result = (-1)*mape
+    result = (-1) * mape
     return result
+
+# MAPE
+def get_mape(y_true, y_pred):
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    final = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+    return final
 
 # RMSE
 def get_rmse(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
-    rmse = np.sqrt(np.mean((y_true - y_pred)**2))
+    rmse = np.sqrt(np.mean((y_true - y_pred) ** 2))
     return rmse
 
 # MAE
@@ -223,11 +91,10 @@ def get_mae(y_true, y_pred):
     mae = np.mean(np.abs(y_true - y_pred))
     return mae
 
-
 ## CV splits
-def cv_split(df, month, printprop = False):
-    split = int(df[df['months']==month].index.values.max())
-    prop = str(split/df.shape[0])
+def cv_split(df, month, printprop=False):
+    split = int(df[df['months'] == month].index.values.max())
+    prop = str(split / df.shape[0])
     if printprop:
         print(f'Proportion of train set is {prop}')
         return split
@@ -237,347 +104,196 @@ def cv_split(df, month, printprop = False):
 
 ## Divide into train/test
 def divide_train_val(df_pp, month, drop):
-    split = cv_split(df = df_pp, month = month)
-    train_x = df_wd_lag_PP.iloc[:split,:].drop(columns = ['index','show_id','취급액']+drop)
-    train_y = df_wd_lag_PP.iloc[:split,:].취급액
-    val_x = df_wd_lag_PP.iloc[split:,:].drop(columns = ['index','show_id','취급액']+drop)
-    val_y = df_wd_lag_PP.iloc[split:,:].취급액
+    split = cv_split(df=df_pp, month=month)
+    train_x = df_pp.iloc[:split, :].drop(columns=['index',
+                                                  'show_id', '취급액'] + drop)  ## 'index' 다시 한 번 check 필요!!!!!!!!
+    train_y = df_pp.iloc[:split, :].취급액
+    val_x = df_pp.iloc[split:, :].drop(columns=['index',
+                                                'show_id', '취급액'] + drop)
+    val_y = df_pp.iloc[split:, :].취급액
     return train_x, train_y, val_x, val_y
 
+
 ## set month
-train_x, train_y, val_x, val_y = divide_train_val(df_wd_lag_PP, 8, drop = ['small_c'])
-train_x.shape
-val_y.shape
+## WD
+train_wd_lag_x_s, train_wd_lag_y_s, val_wd_lag_x_s, val_wd_lag_y_s = divide_train_val(df_wd_lag_PP_s, 8, drop=[])
+train_wd_lag_x, train_wd_lag_y, val_wd_lag_x, val_wd_lag_y = divide_train_val(df_wd_lag_PP, 8, drop=[])
+
+## WK
+train_wk_lag_x_s, train_wk_lag_y_s, val_wk_lag_x_s, val_wk_lag_y_s = divide_train_val(df_wk_lag_PP_s, 8, drop=[])
+train_wk_lag_x, train_wk_lag_y, val_wk_lag_x, val_wk_lag_y = divide_train_val(df_wk_lag_PP, 8, drop=[])
 
 ###############################################################################
 ########################### Light GBM ##############################
 ###############################################################################
 
 
+TARGET = '취급액'  # Our Target
 
-TARGET = '취급액'      # Our Target
+params_lg_wd = {'feature_fraction': 1,
+                'learning_rate': 0.001,
+                'min_data_in_leaf': 135,
+                'n_estimators': 3527,
+                'num_iterations': 2940,
+                'subsample': 1,
+                'boosting_type': 'dart',
+                'objective': 'regression',
+                'metric': 'mape',
+                'categorical_feature': [3, 9, 10, 11]  ## weekdays, small_c, middle_c, big_c
+                }
 
-gbm = LGBMRegressor(objective = 'regression',
-                     boosting_type = 'dart',
-                     metric = 'mape',
-                     n_estimators = 3000, #10000
-                     num_leaves = 10, #10
-                     learning_rate = 0.002, #0.01
-                     bagging_fraction = 0.9,
-                     feature_fraction = 0.5,
-                     bagging_seed = 0,
-                     categorical_feature = [0,9,10,11,3],
-                     #max_depth = 10,
-                                         )
+params_lg_wk = {'feature_fraction': 1,
+                'learning_rate': 0.001,
+                'min_data_in_leaf': 134,
+                'n_estimators': 3474,
+                'num_iterations': 2928,
+                'subsample': 1,
+                'boosting_type': 'dart',
+                'objective': 'regression',
+                'metric': 'mape',
+                'categorical_feature': [3, 9, 10, 11]}  ## weekdays, small_c, middle_c, big_c
 
-def run_lgbm(train_x, train_y, val_x, val_y):
+
+def run_lgbm(params, train_x, train_y, val_x, val_y):
     seed_everything(seed=127)
 
-    estimator = gbm.fit(train_x,train_y,
-                        eval_set=[(val_x, val_y)],
-                        verbose = 100,
-                        eval_metric = 'mape',
-                        early_stopping_rounds = 100
-                        )
-    lgbm_preds = gbm.predict(val_x, num_iteration= estimator.best_iteration_)
-    lgbm_preds[lgbm_preds < 0] = 0
+    global model_lg
 
-    # plot
-    x = range(0,val_y.shape[0])
-    plt.figure(figsize=(50,10))
-    plt.plot(x,val_y,label='true')
-    plt.plot(x,lgbm_preds, label='predicted')
+    model_lg = LGBMRegressor(**params)
+    model_lg.fit(train_x, train_y)
+    lgbm_preds = model_lg.predict(val_x)
+
+    ## Plot LGBM: Predicted vs. True values
+    plt.figure(figsize=(20, 5), dpi=80)
+    x = range(0, len(lgbm_preds))
+    plt.plot(x, val_y, label='true')
+    plt.plot(x, lgbm_preds, label='predicted')
     plt.legend()
-
+    plt.title('LGBM')
     plt.show()
 
-    # show scores
-    print(f'MAPE of best iter is {neg_mape(val_y,lgbm_preds)}')
-    print(f'MAE of best iter is {get_mae(val_y,lgbm_preds)}')
-    print(f'RMSE of best iter is {get_rmse(val_y,lgbm_preds)}')
+    ## Get Scores
+    print(f'MAPE of best iter is {get_mape(val_y, lgbm_preds)}')
+    print(f'MAE of best iter is {get_mae(val_y, lgbm_preds)}')
+    print(f'RMSE of best iter is {get_rmse(val_y, lgbm_preds)}')
 
-    #feature Importance
-    #fi = {'name' : estimator.feature_name_,'importance': estimator.feature_importances_}
-    #fi = pd.DataFrame(fi, columns = ['name','importance'])
-    #fi.sort_values(by=['importance'], inplace=True, ascending = False)
 
-    #return fi
+# Run & Save model
+## WD
+# run_lgbm(params_lg_wd, train_wd_lag_x, train_wd_lag_y, val_wd_lag_x, val_wd_lag_y)
+data_type = 'wd_lag'
+model_name = MODELS_DIR + 'lgbm_finalmodel_' + data_type + '.bin'
+pickle.dump(model_lg, open(model_name, 'wb'))
 
-# save model
+## WK
+# run_lgbm(params_lg_wk, train_wk_lag_x, train_wk_lag_y, val_wk_lag_x, val_wk_lag_y)
 data_type = 'wk_lag'
-model_name = MODELS_DIR+'lgbm_finalmodel_'+data_type+'.bin'
-pickle.dump(estimator, open(model_name, 'wb'))
+model_name = MODELS_DIR + 'lgbm_finalmodel_' + data_type + '.bin'
+pickle.dump(model_lg, open(model_name, 'wb'))
 
 
-
-def make_fast_test(train_x, train_y, val_x, val_y):
-
-    train_data = lgb.Dataset(train_x, label=train_y)
-    valid_data = lgb.Dataset(val_x, label=val_y)
-
-    estimator = lgb.train(
-                            lgb_params,
-                            train_data,
-                            valid_sets = [train_data,valid_data],
-                            verbose_eval = 500,
-                        )
-
-    return estimator
-
-# Make baseline model
-baseline_model = make_fast_test(train_x, train_y, val_x, val_y)
+#############################################################################
+########################### Hyperparameter Tuning ###########################
+#############################################################################
 
 
-# run for each cv
-cv_months = [8]
+# robust cv : 1~8로 12월 예측하기
 
-for num in cv_months:
-    month = num
-    train_x, train_y, val_x, val_y = divide_train_val(df_wd_lag_PP, month, drop = [])
-    print(f'CV with month {month} is starting.')
-    fii = run_lgbm(train_x, train_y, val_x, val_y)
+'''
+class BO:
+    def __init__(self, df, tr_x, tr_y, v_x, v_y):
+        self.data = df
 
-fii.iloc[40:,:]
+    def neg_mape(self, y_true, y_pred): 
+        y_true, y_pred = np.array(y_true), np.array(y_pred)
+        mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+        result = (-1)*mape
+        return result
 
+    def cv_score(self, learning_rate, num_iterations, n_estimators, min_data_in_leaf, feature_fraction, subsample):
+        hp_d = {}
+        hp_d['learning_rate'] = learning_rate   
+        hp_d['n_estimators'] = int(n_estimators)
+        hp_d['num_iterations'] = int(num_iterations)
+        hp_d['subsample'] = subsample
+        #hp_d['num_leaves'] = int(num_leaves)    
+        hp_d['feature_fraction'] = feature_fraction
+        hp_d['min_data_in_leaf'] = int(min_data_in_leaf)
+        #hp_d['scale_pos_weight'] = scale_pos_weight
 
-estimator = gbm.fit(train_x,train_y,
-                    eval_set=[(val_x, val_y)],
-                    verbose = 100,
-                    eval_metric = 'mape',
-                    early_stopping_rounds = 100
-                    )
-lgbm_preds = gbm.predict(val_x, num_iteration= estimator.best_iteration_)
-lgbm_preds[lgbm_preds < 0] = 0
+        data_cv = self.data
 
-########################### Hyperparameter Tuning
-###############################################################################
+        tscv = TimeSeriesSplit(n_splits = 3)
+        score = []
+        for train_index, val_index in tscv.split(data_cv):
+            cv_train, cv_val = data_cv.iloc[train_index], data_cv.iloc[val_index]
+            cv_train_x = cv_train.drop('취급액', axis=1)
+            cv_train_y = cv_train.취급액
+            cv_val_x = cv_val.drop('취급액', axis=1)
+            cv_val_y = cv_val.취급액
 
-## Score metric
-my_scorer = make_scorer(neg_mape, greater_is_better=True)
-
-
-## Optimization objective
-hp_d = {}
-
-#cv3 train
-#1~8
-#1~7
-#1~9
-
-#robust cv : 1~8로 12월 예측하기
-
-def cv_score(learning_rate, subsample, num_leaves, n_estimators, num_iterations, feature_fraction, min_data_in_leaf,
-             scale_pos_weight):
-    hp_d['learning_rate'] = learning_rate
-    hp_d['subsample'] = subsample
-    hp_d['n_estimators'] = int(n_estimators)
-    hp_d['num_iterations'] = int(num_iterations)
-    hp_d['num_leaves'] = int(num_leaves)
-    hp_d['feature_fraction'] = feature_fraction
-    hp_d['min_data_in_leaf'] = int(min_data_in_leaf)
-    hp_d['scale_pos_weight'] = scale_pos_weight
-
-    score = cross_val_score(
-                lgb.LGBMRegressor(boosting_type= 'gbdt', objective= 'regression', metric= ['mape'], seed=42,
+            model = lgb.LGBMRegressor(boosting_type= 'dart', objective= 'regression', metric= ['mape'], seed=42,
                                   subsample_freq=1, max_depth=-1,
-                                  categorical_feature= [0,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26], **hp_d),
-                train_x, train_y, cv=5, scoring=my_scorer).mean()
-    return score
+                                  categorical_feature= [3,9,10,11], 
+                                      **hp_d)
 
+            model.fit(cv_train_x, cv_train_y)
+            pred_values = model.predict(cv_val_x)
+            true_values = cv_val_y
 
-## Execution
-from bayes_opt import BayesianOptimization
+            score.append(self.neg_mape(true_values, pred_values))
 
-bayes_optimizer = BayesianOptimization(f=cv_score, pbounds={'learning_rate':(0,0.05),
-                                                          'subsample':(0,1),
-                                                          'n_estimators':(3000,5000),
-                                                            'num_iterations':(1000,3000),
-                                                          'num_leaves':(10,20),
+        result  = np.mean(score)
+        return result
+
+    def BO_execute(self):
+
+        int_list = ['n_estimators', 'num_iterations', 'min_data_in_leaf'
+                   #,'num_leaves'
+                   ]
+
+        bayes_optimizer = BayesianOptimization(f=self.cv_score, pbounds={'learning_rate':(0.0001,0.01),
+                                                          'subsample':(0.5,1),
+                                                          'n_estimators':(3000,6000),  
+                                                          'num_iterations':(2000,5000),
                                                           'feature_fraction':(0.6,1),
                                                           'min_data_in_leaf':(100,300),
-                                                           'scale_pos_weight': (1,2)},
+                                                           #'scale_pos_weight': (1,2)
+                                                                        },
                                       random_state=42, verbose=2)
-bayes_optimizer.maximize(init_points=3, n_iter=47, acq='ei', xi=0.01)
 
-## print all iterations
-for i,res in enumerate(bayes_optimizer.res):
-    print('Iteration {}: \n\t{}'.format(i, res))
-## print best iterations
-print('Final result: ', bayes_optimizer.max)
+        bayes_optimizer.maximize(init_points=3, n_iter=27, acq='ei', xi=0.01)
 
-
-## Final result로 돌려보기
-
-#BO_result = {'feature_fraction': 0.7494834785935099, 'learning_rate': 0.008211209428118416, 'min_data_in_leaf': 298, 'n_estimators': 3304, 'num_iterations': 2671, 'num_leaves': 13, 'scale_pos_weight': 1.746019312719247, 'subsample': 0.7734458936226617}
-#BO_result['boosting_type'] = 'gbdt'
-#BO_result['objective'] = 'regression'
-#BO_result['metric'] = 'mape'
-#BO_result['subsample_freq'] = 1
-#BO_result['categorical_feature'] = [0,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]
-
-#BO_train = lgb.train(BO_result, train_data,
-                           # valid_sets = [train_data,valid_data],
-                           # verbose_eval = 500 )
+        ## print all iterations
+        #for i,res in enumerate(bayes_optimizer.res):
+        #    print('Iteration {}: \n\t{}'.format(i, res))
+        ## print best iterations
+        #print('Final result: ', bayes_optimizer.max)
 
 
-def BO_execute(train_data, valid_data):
-    bayes_optimizer = BayesianOptimization(f=cv_score, pbounds={'learning_rate':(0,0.05),
-                                                          'subsample':(0,1),
-                                                          'n_estimators':(3000,5000),
-                                                            'num_iterations':(1000,3000),
-                                                          'num_leaves':(10,20),
-                                                          'feature_fraction':(0.7,1),
-                                                          'min_data_in_leaf':(100,300),
-                                                           'scale_pos_weight': (1,2)},
-                                      random_state=42, verbose=2)
-    bayes_optimizer.maximize(init_points=3, n_iter=47, acq='ei', xi=0.01)
-    BO_best = bayes_optimizer.max['params']
-    BO_best['boosting_type'] = 'gbdt'              ## 얘네 말고도 걍 고정시킬 하이퍼파라미터들은 여기에 때려넣기
-    BO_best['objective'] = 'regression'
-    BO_best['metric'] = 'mape'
-    ## BO_best['categorical_feature'] = [0,1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]
+        BO_best = bayes_optimizer.max['params'] 
+        for i in int_list:
+            BO_best[i] = int(np.round(BO_best[i]))
+        BO_best['boosting_type'] = 'dart'             
+        BO_best['objective'] = 'regression'
+        BO_best['metric'] = 'mape'
+        BO_best['categorical_feature'] = [3,9,10,11]
+        #BO_best['feature_fraction'] = 1
+        #BO_best['subsample'] = 1
 
-    BO_result = lgb.train(BO_best, train_data,
-                            valid_sets = [train_data,valid_data],
-                            verbose_eval = 500 )
-    return BO_best, BO_result
+        train_x = self.tr_x
+        train_y = self.tr_y
+        val_x = self.v_x
+        val_y = self.v_y
+        data_train = lgb.Dataset(train_x, label=train_y)
+        data_valid = lgb.Dataset(val_x, label=val_y)
 
-BO_params, BO_model = BO_execute(train_data, valid_data)
+        BO_result = lgb.train(BO_best, data_train,
+                            valid_sets = [data_train, data_valid],
+                            verbose_eval = 500,
+                             )
+        return BO_best, BO_result
 
-## <TO DO LIST - Tuesday 10:00PM>
-## cv 함수 다시 / 전처리 완료 데이터 주기
-## lightgbm cat feature 처리 방법
-## 언니: weekday/wd 나: weekend/wk 돌려보
-## Feature Importance
-## model 저장 pickle로
-
-
-
-
-###############################################################################
-########################### KERAS ##############################
-###############################################################################
-save_model_weights
-
-
-
-###############################################################################
-########################### Ensemble ##############################
-###############################################################################
-middle_preds=
-small_preds=
-big_preds=
-
-
-temp = val_y
-percentile(price,[70,90,95])
-final_preds =[]
-for i in x:
-    price1 = temp.iloc[i]
-    if price1<6080073:
-        final_preds.append(small_preds_71[i])
-    elif 6080073<=price1<37064231:
-        final_preds.append(middle_preds_81[i])
-    else:
-        final_preds.append(big_preds_[i])
-
-x = range(0,val_y.shape[0])
-plt.figure(figsize=(50,10))
-plt.plot(x,val_y,label='true')
-plt.plot(x,final_preds, label='pred')
-plt.legend()
-
-plt.show()
-neg_mape(val_y,final_preds)
-neg_mape(val_y,small_preds_71)
-
-
-
-
-
-
-
-
-###############################################################################
-########################### Predict ##############################
-###############################################################################
-
-
-
-
-
-########################### LGBM
-###############################################################################
-
-## Create Dummy DataFrame to store predictions
-# all_preds = pd.DataFrame()
-test_x
-model_path = MODELS_DIR+'lgbm_model_name.bin'
-estimator = pickle.load(open(model_path, 'rb'))
-lgbm_preds = estimator.predict(test_x)
-
-#### load sample submission and save
-valDF = pd.read_csv(ORIGINAL+'sample_submission.csv')
-valDF = valDF.merge(lgbm_preds, on= , how='left')
-valDF.to_csv(SUBMISSION_DIR+'lgbm_final_VER.csv',index=False)
-
-val_predsDF_lgbm=valDF.copy()
-
-
-
-
-########################### KERAS
-###############################################################################
-base_epochs=30
-val_x =
-
-# numerical cols
-num_cols = [  "sell_price",
-              "sell_price_rel_diff",
-              "rolling_mean_28_7",
-              "rolling_mean_28_28",
-              "rolling_median_28_7",
-              "rolling_median_28_28",
-              "logd"
-
-           ]
-bool_cols = ["snap_CA", "snap_TX", "snap_WI"]
-dense_cols = num_cols + bool_cols
-cat_cols = cat_id_cols + ["wday", "month", "year", "event_name_1",
-                          "event_type_1", "event_name_2", "event_type_2"]
-
-# Input dict for training with a dense array and separate inputs for each embedding input
-def make_X(df):
-    X = {"dense1": df[dense_cols].values}
-    for i, v in enumerate(cat_cols):
-        X[v] = df[[v]].values
-    return X
-
-forecast = make_X(test_x)
-forecast['dense1'], scaler = preprocess_data(forecast['dense1'], scaler1)
-
-model.load_weights(MODELS_DIR+'Keras_model_name.h5')
-keras_preds = model.predict(forecast, batch_size=2 ** 14)
-for j in range(1,5):
-    model.load_weights(MODELS_DIR+'Keras_model_name_et.h5')
-    keras_preds += model.predict(forecast, batch_size=2 ** 14)
-keras_preds /= 5
-
-valDF2 = pd.read_csv(ORIGINAL+'sample_submission.csv')
-valDF2 = valDF2.merge(keras_preds, on= , how='left')
-valDF2.to_csv(SUBMISSION_DIR+'keras_final_VER.csv',index=False)
-
-val_predsDF_keras=valDF2.copy()
-
-
-
-
-########################### ENSEMBLE
-###############################################################################
-
-# Submissions for M5 accuracy competition, used as starting point to M5 uncertainty
-final_preds_acc = val_predsDF_lgbm.copy()
-final_preds_acc.iloc[:,1:] = (val_predsDF_lgbm.iloc[:,1:]**3 * val_predsDF.iloc[:,1:]) ** (1/4)
-
-#final_preds_acc.iloc[:,-1] = val_predsDF_lgbm.iloc[:,-1].values
-final_preds_acc.to_csv(SUBMISSION_DIR+'lgbm3keras1.csv',index=False)
+params_wd, model_wd = BO(df_wd_lag_PP, train_wd_lag_x, train_wd_lag_y, val_wd_lag_x, val_wd_lag_y).BO_execute()
+params_wk, model_wk = BO(df_wk_lag_PP, train_wk_lag_x, train_wk_lag_y, val_wk_lag_x, val_wk_lag_y).BO_execute()
+'''
